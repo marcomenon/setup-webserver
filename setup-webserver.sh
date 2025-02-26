@@ -396,8 +396,7 @@ msg_info "Creazione struttura dell'applicazione in /opt/webapp"
 pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{static,templates}" && msg_ok "Struttura creata"
 
 msg_info "Setup ambiente Python e installazione dipendenze"
-pct exec "$CTID" -- bash -c "export PATH=\$PATH:/root/.local/bin && uv init /opt/webapp/ && uv venv /opt/webapp/.venv && source /opt/webapp/.venv/bin/activate && uv pip install flask uvicorn valkey flask_sqlalchemy pymysql"
- && msg_ok "Ambiente Python pronto"
+pct exec "$CTID" -- bash -c "export PATH=\$PATH:/root/.local/bin && uv init /opt/webapp/ && uv venv /opt/webapp/.venv && source /opt/webapp/.venv/bin/activate && uv pip install flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
 msg_info "Creazione file .env"
 if [[ "$DB_TYPE" == "mariadb" ]]; then
