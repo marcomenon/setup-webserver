@@ -365,7 +365,15 @@ fi
 # Configurazione del server all'interno del container
 # -------------------------------------------
 msg_info "Installazione pacchetti base nel container"
-pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
+pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y curl nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
+
+msg_info "Installazione di uv"
+pct exec "$CTID" -- bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh" && msg_ok "uv installato"
+
+msg_info "Riavvio del container per attivare uv"
+pct restart "$CTID"
+sleep 5
+msg_ok "Container riavviato"
 
 msg_info "Configurazione di nginx"
 pct exec "$CTID" -- bash -c "cat > /etc/nginx/sites-available/webapp <<'EOF'
@@ -390,7 +398,6 @@ pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{app,static,templates}" && msg
 msg_info "Setup ambiente Python e installazione dipendenze"
 pct exec "$CTID" -- bash -c "python3 -m venv /opt/webapp/venv && \
   source /opt/webapp/venv/bin/activate && \
-  curl -LsSf https://astral.sh/uv/install.sh | sh && \
   uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
 msg_info "Creazione file .env"
