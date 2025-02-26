@@ -5,7 +5,7 @@
 #
 # All'avvio l'utente sceglie se usare impostazioni predefinite
 # oppure configurare manualmente ogni parametro, inclusi locale,
-# timezone e container password.
+# timezone, container password e utente sudo.
 #
 # Autore: (personalizza)
 # License: MIT
@@ -144,6 +144,8 @@ if [[ "$MODE" == "DEFAULT" ]]; then
   FLASK_SECRET_KEY="defaultsecret"
   LOCALE="it_IT.UTF-8"
   TIMEZONE="Europe/Rome"
+  SUDO_USER="admin"
+  SUDO_PASSWORD="admin"
   SUMMARY="CTID: $CTID
 Hostname: $HOSTNAME
 OS: $PCT_OSTYPE
@@ -156,8 +158,9 @@ Timezone: $TIMEZONE
 Container Password: $CONTAINER_PASSWORD
 Database: $DB_TYPE
 Admin Username: $ADMIN_USER
-Flask Secret: $FLASK_SECRET_KEY"
-  whiptail --title "Parametri Predefiniti" --msgbox "Utilizzo i seguenti parametri:\n\n$SUMMARY" 18 60
+Flask Secret: $FLASK_SECRET_KEY
+Sudo User: $SUDO_USER"
+  whiptail --title "Parametri Predefiniti" --msgbox "Utilizzo i seguenti parametri:\n\n$SUMMARY" 20 60
 else
   # Modalità manuale: chiedi ogni parametro tramite whiptail
   CTID=$(whiptail --title "Container ID" --inputbox "Inserisci Container ID (>= 100):" 10 60 "" 3>&1 1>&2 2>&3)
@@ -216,6 +219,17 @@ else
   else
     LOCALE="en_US.UTF-8"
     TIMEZONE="America/New_York"
+  fi
+
+  SUDO_USER=$(whiptail --title "Sudo User" --radiolist "Configurazione utente sudo:" 10 60 2 \
+    "DEFAULT" "Usa utente default (admin/admin)" ON \
+    "MANUALE" "Configura utente sudo manualmente" OFF 3>&1 1>&2 2>&3)
+  if [[ "$SUDO_USER" == "DEFAULT" ]]; then
+    SUDO_USER="admin"
+    SUDO_PASSWORD="admin"
+  else
+    SUDO_USER=$(whiptail --title "Sudo Username" --inputbox "Inserisci il nome utente per sudo:" 10 60 "sudoer" 3>&1 1>&2 2>&3)
+    SUDO_PASSWORD=$(whiptail --title "Sudo Password" --passwordbox "Inserisci la password per l'utente sudo:" 10 60 3>&1 1>&2 2>&3)
   fi
 fi
 
@@ -332,6 +346,12 @@ msg_info "Configurazione locale e timezone"
 pct exec "$CTID" -- bash -c "echo '$LOCALE UTF-8' > /etc/locale.gen && locale-gen && update-locale LANG=$LOCALE"
 pct exec "$CTID" -- bash -c "echo '$TIMEZONE' > /etc/timezone && dpkg-reconfigure -f noninteractive tzdata"
 msg_ok "Locale ($LOCALE) e timezone ($TIMEZONE) configurati"
+
+# -------------------------------------------
+# Creazione utente sudo
+# -------------------------------------------
+msg_info "Creazione utente sudo"
+pct exec "$CTID" -- bash -c "useradd -m -s /bin/bash $SUDO_USER && echo '$SUDO_USER:$SUDO_PASSWORD' | chpasswd && usermod -aG sudo $SUDO_USER" && msg_ok "Utente sudo $SUDO_USER creato"
 
 # -------------------------------------------
 # Scelta interattiva del tipo di database
@@ -502,5 +522,11 @@ ExecStart=/opt/webapp/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 5000
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload && systemctl enable webapp && systemctl start webapp" && msg_ok "Servizio avviato"
+
+# -------------------------------------------
+# Mostra l'indirizzo IP del container
+# -------------------------------------------
+IP_ADDRESS=$(pct exec "$CTID" -- bash -c "hostname -I | awk '{print \$1}'")
+msg_ok "Indirizzo IP del container: $IP_ADDRESS"
 
 msg_ok "Configurazione completata. Il webserver Flask e l'interfaccia admin sono pronti!"
