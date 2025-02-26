@@ -133,9 +133,9 @@ read -p "Scegli sistema operativo (debian/ubuntu): " PCT_OSTYPE
 
 # Imposta il template in base alla scelta (non si chiede la versione)
 if [[ "$PCT_OSTYPE" == "debian" ]]; then
-  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.gz"
+  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
 elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
-  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.gz"
+  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.zst"
 else
   msg_error "Sistema operativo non valido. Scegli 'debian' o 'ubuntu'."
   exit 1
