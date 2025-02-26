@@ -3,8 +3,9 @@
 # Script per creare un container LXC su Proxmox e configurare
 # un webserver Flask con interfaccia admin.
 #
-# All'avvio l'utente sceglie se usare le impostazioni predefinite
-# oppure configurare manualmente ogni parametro.
+# All'avvio l'utente sceglie se usare impostazioni predefinite
+# oppure configurare manualmente ogni parametro, inclusi locale,
+# timezone e container password.
 #
 # Autore: (personalizza)
 # License: MIT
@@ -128,9 +129,10 @@ MODE=$(whiptail --title "Modalità di Configurazione" --radiolist "Scegli la mod
   "MANUALE" "Configura manualmente ogni parametro" OFF 3>&1 1>&2 2>&3)
 
 if [[ "$MODE" == "DEFAULT" ]]; then
-  # Impostazioni predefinite
+  # Impostazioni predefinite (default: Italia)
   CTID=$(pvesh get /cluster/nextid)
   HOSTNAME="flask-container"
+  CONTAINER_PASSWORD="password"
   PCT_OSTYPE="debian"
   DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
   DISK_SIZE=8
@@ -140,6 +142,8 @@ if [[ "$MODE" == "DEFAULT" ]]; then
   ADMIN_USER="admin"
   ADMIN_PASSWORD="admin"
   FLASK_SECRET_KEY="defaultsecret"
+  LOCALE="it_IT.UTF-8"
+  TIMEZONE="Europe/Rome"
   SUMMARY="CTID: $CTID
 Hostname: $HOSTNAME
 OS: $PCT_OSTYPE
@@ -147,10 +151,13 @@ Template: $DESIRED_TEMPLATE
 Disk: ${DISK_SIZE}GB
 CPU: ${CORE_COUNT} core(s)
 RAM: ${RAM_SIZE} MiB
+Locale: $LOCALE
+Timezone: $TIMEZONE
+Container Password: $CONTAINER_PASSWORD
 Database: $DB_TYPE
 Admin Username: $ADMIN_USER
 Flask Secret: $FLASK_SECRET_KEY"
-  whiptail --title "Parametri Predefiniti" --msgbox "Utilizzo i seguenti parametri:\n\n$SUMMARY" 15 60
+  whiptail --title "Parametri Predefiniti" --msgbox "Utilizzo i seguenti parametri:\n\n$SUMMARY" 18 60
 else
   # Modalità manuale: chiedi ogni parametro tramite whiptail
   CTID=$(whiptail --title "Container ID" --inputbox "Inserisci Container ID (>= 100):" 10 60 "" 3>&1 1>&2 2>&3)
@@ -164,6 +171,8 @@ else
     msg_error "Hostname non può essere vuoto."
     exit 206
   fi
+
+  CONTAINER_PASSWORD=$(whiptail --title "Container Password" --passwordbox "Inserisci la password per il container:" 10 60 "password" 3>&1 1>&2 2>&3)
 
   PCT_OSTYPE=$(whiptail --title "Sistema Operativo" --radiolist "Scegli il sistema operativo:" 10 60 2 \
     "debian" "Debian" ON \
@@ -196,6 +205,17 @@ else
   FLASK_SECRET_KEY=$(whiptail --title "Flask - Secret Key" --inputbox "Inserisci la secret key per Flask (lascia vuoto per default 'defaultsecret'):" 10 60 "" 3>&1 1>&2 2>&3)
   if [ -z "$FLASK_SECRET_KEY" ]; then
     FLASK_SECRET_KEY="defaultsecret"
+  fi
+
+  LOCALE_CHOICE=$(whiptail --title "Localizzazione" --radiolist "Scegli la localizzazione:" 10 60 2 \
+    "Italia" "Imposta locale it_IT.UTF-8 e timezone Europe/Rome" ON \
+    "America" "Imposta locale en_US.UTF-8 e timezone America/New_York" OFF 3>&1 1>&2 2>&3)
+  if [[ "$LOCALE_CHOICE" == "Italia" ]]; then
+    LOCALE="it_IT.UTF-8"
+    TIMEZONE="Europe/Rome"
+  else
+    LOCALE="en_US.UTF-8"
+    TIMEZONE="America/New_York"
   fi
 fi
 
@@ -266,6 +286,7 @@ PCT_OPTIONS=(
   -memory "$RAM_SIZE"
   -unprivileged 1
   -rootfs "${CONTAINER_STORAGE}:${DISK_SIZE}"
+  --password "$CONTAINER_PASSWORD"
 )
 
 # -------------------------------------------
@@ -303,6 +324,14 @@ msg_ok "Container avviato"
 msg_info "Esecuzione di apt update e apt upgrade nel container"
 pct exec "$CTID" -- bash -c "apt update && apt upgrade -y"
 msg_ok "Container aggiornato"
+
+# -------------------------------------------
+# Configurazione locale e timezone all'interno del container
+# -------------------------------------------
+msg_info "Configurazione locale e timezone"
+pct exec "$CTID" -- bash -c "echo '$LOCALE UTF-8' > /etc/locale.gen && locale-gen && update-locale LANG=$LOCALE"
+pct exec "$CTID" -- bash -c "echo '$TIMEZONE' > /etc/timezone && dpkg-reconfigure -f noninteractive tzdata"
+msg_ok "Locale ($LOCALE) e timezone ($TIMEZONE) configurati"
 
 # -------------------------------------------
 # Scelta interattiva del tipo di database
