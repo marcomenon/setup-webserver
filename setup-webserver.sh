@@ -3,7 +3,7 @@
 # Script semplificato per creare un container LXC su Proxmox
 # e configurare un webserver Flask con interfaccia admin.
 #
-# Autore: Menon Marco
+# Autore: (personalizza)
 # License: MIT
 # ===============================================================
 
@@ -128,14 +128,12 @@ fi
 
 read -p "Inserisci Hostname del container: " HOSTNAME
 
-# Chiede solo il tipo di sistema operativo (debian o ubuntu)
+# L'utente sceglie solo se usare debian o ubuntu
 read -p "Scegli sistema operativo (debian/ubuntu): " PCT_OSTYPE
-
-# Imposta il template in base alla scelta (non si chiede la versione)
 if [[ "$PCT_OSTYPE" == "debian" ]]; then
-  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
+  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.gz"
 elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
-  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.zst"
+  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.gz"
 else
   msg_error "Sistema operativo non valido. Scegli 'debian' o 'ubuntu'."
   exit 1
@@ -248,10 +246,20 @@ fi
 msg_ok "Container LXC $CTID creato con successo."
 
 # -------------------------------------------
+# Avvio e aggiornamento iniziale del container
+# -------------------------------------------
+msg_info "Avvio del container LXC"
+pct start "$CTID"
+sleep 5
+msg_ok "Container avviato"
+
+msg_info "Esecuzione di apt update e apt upgrade nel container"
+pct exec "$CTID" -- bash -c "apt update && apt upgrade -y"
+msg_ok "Container aggiornato"
+
+# -------------------------------------------
 # Configurazione del server all'interno del container
 # -------------------------------------------
-sleep 5  # Attesa per garantire che il container sia avviato
-
 # 1. Installazione pacchetti base
 msg_info "Installazione pacchetti base nel container"
 pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
