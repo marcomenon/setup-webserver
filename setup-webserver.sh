@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # ===============================================================
-# Script semplificato per creare un container LXC su Proxmox
-# e configurare un webserver Flask con interfaccia admin.
+# Script per creare un container LXC su Proxmox e configurare
+# un webserver Flask con interfaccia admin.
 #
-# Autore: (personalizza)
+# All'avvio l'utente sceglie se usare le impostazioni predefinite
+# oppure configurare manualmente ogni parametro.
+#
+# Autore: Marco Menon
 # License: MIT
 # ===============================================================
 
@@ -87,78 +90,82 @@ function msg_warn() {
 }
 
 # -------------------------------------------
-# Selezione interattiva degli storage
+# Modalità di configurazione
 # -------------------------------------------
-function select_storage() {
-  local content="$1"  # "rootdir" per container, "vztmpl" per template
-  local label="$2"
-  local storages=()
-  while IFS= read -r line; do
-    storages+=("$(echo "$line" | awk '{print $1}')")
-  done < <(pvesm status -content "$content" | tail -n +2)
-  
-  if [ "${#storages[@]}" -eq 0 ]; then
-    msg_error "Nessuno storage per $label trovato."
-    exit 1
-  elif [ "${#storages[@]}" -eq 1 ]; then
-    echo "${storages[0]}"
-  else
-    local choices=()
-    for s in "${storages[@]}"; do
-      choices+=("$s" "" "OFF")
-    done
-    local selected
-    selected=$(whiptail --title "$label Storage" --radiolist \
-      "Scegli lo storage per $label:" 15 60 4 "${choices[@]}" 3>&1 1>&2 2>&3) || {
-      msg_error "Selezione interrotta."
-      exit 202
-    }
-    echo "$selected"
-  fi
-}
+MODE=$(whiptail --title "Modalità di Configurazione" --radiolist "Scegli la modalità:" 10 60 2 \
+  "DEFAULT" "Usa impostazioni predefinite" ON \
+  "MANUALE" "Configura manualmente ogni parametro" OFF 3>&1 1>&2 2>&3)
 
-# -------------------------------------------
-# Input interattivo per impostazioni base
-# -------------------------------------------
-CTID=$(whiptail --title "Container ID" --inputbox "Inserisci Container ID (>= 100):" 10 60 "" 3>&1 1>&2 2>&3)
-if ! [[ "$CTID" =~ ^[0-9]+$ ]] || [ "$CTID" -lt 100 ]; then
-  msg_error "CTID deve essere un numero intero maggiore o uguale a 100."
-  exit 205
-fi
-
-HOSTNAME=$(whiptail --title "Hostname" --inputbox "Inserisci il nome host del container:" 10 60 "" 3>&1 1>&2 2>&3)
-if [ -z "$HOSTNAME" ]; then
-  msg_error "Hostname non può essere vuoto."
-  exit 206
-fi
-
-# L'utente sceglie il sistema operativo tramite un menu radiolist
-PCT_OSTYPE=$(whiptail --title "Sistema Operativo" --radiolist "Scegli il sistema operativo:" 10 60 2 \
-  "debian" "Debian" ON \
-  "ubuntu" "Ubuntu" OFF 3>&1 1>&2 2>&3)
-if [[ "$PCT_OSTYPE" != "debian" && "$PCT_OSTYPE" != "ubuntu" ]]; then
-  msg_error "Sistema operativo non valido. Scegli 'debian' o 'ubuntu'."
-  exit 1
-fi
-
-# Imposta il template in base alla scelta
-if [[ "$PCT_OSTYPE" == "debian" ]]; then
+if [[ "$MODE" == "DEFAULT" ]]; then
+  # Impostazioni predefinite
+  CTID=$(pvesh get /cluster/nextid)
+  HOSTNAME="flask-container"
+  PCT_OSTYPE="debian"
   DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
-elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
-  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.zst"
-fi
+  DISK_SIZE=8
+  CORE_COUNT=1
+  RAM_SIZE=1024
+  DB_TYPE="sqlite"
+  ADMIN_USER="admin"
+  ADMIN_PASSWORD="admin"
+  FLASK_SECRET_KEY="defaultsecret"
+  SUMMARY="CTID: $CTID
+Hostname: $HOSTNAME
+OS: $PCT_OSTYPE
+Template: $DESIRED_TEMPLATE
+Disk: ${DISK_SIZE}GB
+CPU: ${CORE_COUNT} core(s)
+RAM: ${RAM_SIZE} MiB
+Database: $DB_TYPE
+Admin Username: $ADMIN_USER
+Flask Secret: $FLASK_SECRET_KEY"
+  whiptail --title "Parametri Predefiniti" --msgbox "Utilizzo i seguenti parametri:\n\n$SUMMARY" 15 60
+else
+  # Modalità manuale: chiedi ogni parametro tramite whiptail
+  CTID=$(whiptail --title "Container ID" --inputbox "Inserisci Container ID (>= 100):" 10 60 "" 3>&1 1>&2 2>&3)
+  if ! [[ "$CTID" =~ ^[0-9]+$ ]] || [ "$CTID" -lt 100 ]; then
+    msg_error "CTID deve essere un numero intero maggiore o uguale a 100."
+    exit 205
+  fi
 
-# Impostazioni predefinite per container
-DISK_SIZE=8     # in GB
-CORE_COUNT=1
-RAM_SIZE=1024   # in MiB
+  HOSTNAME=$(whiptail --title "Hostname" --inputbox "Inserisci il nome host del container:" 10 60 "" 3>&1 1>&2 2>&3)
+  if [ -z "$HOSTNAME" ]; then
+    msg_error "Hostname non può essere vuoto."
+    exit 206
+  fi
 
-# -------------------------------------------
-# Verifica se l'ID è già in uso
-# -------------------------------------------
-if pct status "$CTID" &>/dev/null || qm status "$CTID" &>/dev/null; then
-  msg_error "CTID '$CTID' è già in uso."
-  exit 206
+  PCT_OSTYPE=$(whiptail --title "Sistema Operativo" --radiolist "Scegli il sistema operativo:" 10 60 2 \
+    "debian" "Debian" ON \
+    "ubuntu" "Ubuntu" OFF 3>&1 1>&2 2>&3)
+  if [[ "$PCT_OSTYPE" != "debian" && "$PCT_OSTYPE" != "ubuntu" ]]; then
+    msg_error "Sistema operativo non valido. Scegli 'debian' o 'ubuntu'."
+    exit 1
+  fi
+  if [[ "$PCT_OSTYPE" == "debian" ]]; then
+    DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
+  elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
+    DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.zst"
+  fi
+
+  DISK_SIZE=$(whiptail --title "Disk Size" --inputbox "Dimensione del disco (in GB):" 10 60 "8" 3>&1 1>&2 2>&3)
+  CORE_COUNT=$(whiptail --title "CPU Cores" --inputbox "Numero di core CPU:" 10 60 "1" 3>&1 1>&2 2>&3)
+  RAM_SIZE=$(whiptail --title "RAM" --inputbox "Quantità di RAM (in MiB):" 10 60 "1024" 3>&1 1>&2 2>&3)
+
+  DB_TYPE=$(whiptail --title "Database" --radiolist "Scegli il tipo di database per l'applicazione:" 10 60 2 \
+    "sqlite" "SQLite (più semplice)" ON \
+    "mariadb" "MariaDB (per ambienti più complessi)" OFF 3>&1 1>&2 2>&3)
+  if [[ "$DB_TYPE" == "mariadb" ]]; then
+    DB_NAME=$(whiptail --title "MariaDB - Nome Database" --inputbox "Inserisci il nome del database:" 10 60 "webapp" 3>&1 1>&2 2>&3)
+    DB_USER=$(whiptail --title "MariaDB - Utente" --inputbox "Inserisci il nome utente per il database:" 10 60 "webappuser" 3>&1 1>&2 2>&3)
+    DB_PASSWORD=$(whiptail --title "MariaDB - Password" --passwordbox "Inserisci la password per il database:" 10 60 3>&1 1>&2 2>&3)
+  fi
+
+  ADMIN_USER=$(whiptail --title "Admin - Username" --inputbox "Inserisci l'username per l'admin di Flask:" 10 60 "admin" 3>&1 1>&2 2>&3)
+  ADMIN_PASSWORD=$(whiptail --title "Admin - Password" --passwordbox "Inserisci la password per l'admin di Flask:" 10 60 3>&1 1>&2 2>&3)
+  FLASK_SECRET_KEY=$(whiptail --title "Flask - Secret Key" --inputbox "Inserisci la secret key per Flask (lascia vuoto per default 'defaultsecret'):" 10 60 "" 3>&1 1>&2 2>&3)
+  if [ -z "$FLASK_SECRET_KEY" ]; then
+    FLASK_SECRET_KEY="defaultsecret"
+  fi
 fi
 
 # -------------------------------------------
@@ -191,7 +198,8 @@ msg_ok "Template individuato: $TEMPLATE"
 # -------------------------------------------
 # Se il template non esiste o risulta corrotto, ricaricalo (fino a 3 tentativi)
 # -------------------------------------------
-if ! pveam list "$TEMPLATE_STORAGE" | grep -q "$TEMPLATE" || ! zstdcat "$TEMPLATE_PATH" 2>/dev/null | tar -tf - >/dev/null 2>&1; then
+if ! pveam list "$TEMPLATE_STORAGE" | grep -q "$TEMPLATE" || \
+   ! zstdcat "$TEMPLATE_PATH" 2>/dev/null | tar -tf - >/dev/null 2>&1; then
   msg_warn "Template $TEMPLATE non presente o corrotto. Ricaricamento..."
   [ -f "$TEMPLATE_PATH" ] && rm -f "$TEMPLATE_PATH"
   for attempt in {1..3}; do
@@ -210,7 +218,7 @@ fi
 msg_ok "Template pronto all'uso."
 
 # -------------------------------------------
-# Verifica/aggiusta subuid e subgid (necessari per container unprivilegiati)
+# Verifica/aggiusta subuid e subgid (per container unprivilegiati)
 # -------------------------------------------
 grep -q "root:100000:65536" /etc/subuid || echo "root:100000:65536" >> /etc/subuid
 grep -q "root:100000:65536" /etc/subgid || echo "root:100000:65536" >> /etc/subgid
@@ -235,7 +243,6 @@ PCT_OPTIONS=(
 msg_info "Creazione del container LXC"
 if ! pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" "${PCT_OPTIONS[@]}" &>/dev/null; then
   msg_error "Creazione container fallita."
-  # Se il template è sospetto di corruzione, riprova a ricaricarlo
   if ! zstdcat "$TEMPLATE_PATH" 2>/dev/null | tar -tf - >/dev/null 2>&1; then
     msg_error "Template corrotto. Rimozione e nuovo download..."
     rm -f "$TEMPLATE_PATH"
@@ -267,13 +274,39 @@ pct exec "$CTID" -- bash -c "apt update && apt upgrade -y"
 msg_ok "Container aggiornato"
 
 # -------------------------------------------
+# Scelta interattiva del tipo di database
+# -------------------------------------------
+DB_TYPE=$(whiptail --title "Database" --radiolist "Scegli il tipo di database per l'applicazione:" 10 60 2 \
+  "sqlite" "SQLite (più semplice)" ON \
+  "mariadb" "MariaDB (per ambienti più complessi)" OFF 3>&1 1>&2 2>&3)
+if [[ "$DB_TYPE" != "sqlite" && "$DB_TYPE" != "mariadb" ]]; then
+  msg_error "Tipo di database non valido."
+  exit 210
+fi
+msg_ok "Database scelto: $DB_TYPE"
+
+if [[ "$DB_TYPE" == "mariadb" ]]; then
+  DB_NAME=$(whiptail --title "MariaDB - Nome Database" --inputbox "Inserisci il nome del database:" 10 60 "webapp" 3>&1 1>&2 2>&3)
+  DB_USER=$(whiptail --title "MariaDB - Utente" --inputbox "Inserisci il nome utente per il database:" 10 60 "webappuser" 3>&1 1>&2 2>&3)
+  DB_PASSWORD=$(whiptail --title "MariaDB - Password" --passwordbox "Inserisci la password per il database:" 10 60 3>&1 1>&2 2>&3)
+fi
+
+# -------------------------------------------
+# Inserimento credenziali per amministrazione Flask
+# -------------------------------------------
+ADMIN_USER=$(whiptail --title "Admin - Username" --inputbox "Inserisci l'username per l'admin di Flask:" 10 60 "admin" 3>&1 1>&2 2>&3)
+ADMIN_PASSWORD=$(whiptail --title "Admin - Password" --passwordbox "Inserisci la password per l'admin di Flask:" 10 60 3>&1 1>&2 2>&3)
+FLASK_SECRET_KEY=$(whiptail --title "Flask - Secret Key" --inputbox "Inserisci la secret key per Flask (lascia vuoto per default 'defaultsecret'):" 10 60 "" 3>&1 1>&2 2>&3)
+if [ -z "$FLASK_SECRET_KEY" ]; then
+  FLASK_SECRET_KEY="defaultsecret"
+fi
+
+# -------------------------------------------
 # Configurazione del server all'interno del container
 # -------------------------------------------
-# 1. Installazione pacchetti base
 msg_info "Installazione pacchetti base nel container"
 pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
 
-# 2. Configurazione di nginx come reverse proxy
 msg_info "Configurazione di nginx"
 pct exec "$CTID" -- bash -c "cat > /etc/nginx/sites-available/webapp <<'EOF'
 server {
@@ -291,26 +324,30 @@ server {
 EOF
 ln -sf /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/ && rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx" && msg_ok "Nginx configurato"
 
-# 3. Creazione della struttura dell'applicazione
 msg_info "Creazione struttura dell'applicazione in /opt/webapp"
 pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{app,static,templates}" && msg_ok "Struttura creata"
 
-# 4. Creazione del virtual environment ed installazione delle dipendenze
 msg_info "Setup ambiente Python e installazione dipendenze"
 pct exec "$CTID" -- bash -c "python3 -m venv /opt/webapp/venv && \
   source /opt/webapp/venv/bin/activate && \
   curl -LsSf https://astral.sh/uv/install.sh | sh && \
   uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
-# 5. Creazione del file .env per l'applicazione
 msg_info "Creazione file .env"
-pct exec "$CTID" -- bash -c "cat > /opt/webapp/.env <<'EOF'
-FLASK_APP=app.py
-FLASK_SECRET_KEY=defaultsecret
-DB_TYPE=sqlite
-EOF" && msg_ok ".env creato"
+if [[ "$DB_TYPE" == "mariadb" ]]; then
+  ENV_CONTENT="FLASK_APP=app.py
+FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+DB_TYPE=${DB_TYPE}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+DB_NAME=${DB_NAME}"
+else
+  ENV_CONTENT="FLASK_APP=app.py
+FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+DB_TYPE=${DB_TYPE}"
+fi
+pct exec "$CTID" -- bash -c "echo \"$ENV_CONTENT\" > /opt/webapp/.env" && msg_ok ".env creato"
 
-# 6. Creazione dell'applicazione Flask (app.py)
 msg_info "Creazione applicazione Flask (app.py)"
 pct exec "$CTID" -- bash -c "cat > /opt/webapp/app/app.py <<'EOF'
 from flask import Flask, render_template, request, redirect, url_for, flash
@@ -318,7 +355,13 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 app = Flask(__name__, template_folder='../templates')
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'defaultsecret')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///webapp.db'
+if os.environ.get('DB_TYPE') == 'mariadb':
+    db_user = os.environ.get('DB_USER', 'webappuser')
+    db_password = os.environ.get('DB_PASSWORD', 'password')
+    db_name = os.environ.get('DB_NAME', 'webapp')
+    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_password}@localhost/{db_name}'
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///webapp.db'
 db = SQLAlchemy(app)
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -346,7 +389,6 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
 EOF" && msg_ok "Applicazione Flask creata"
 
-# 7. Creazione del template HTML per la pagina admin
 msg_info "Creazione template admin.html"
 pct exec "$CTID" -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
 <!doctype html>
@@ -380,7 +422,6 @@ pct exec "$CTID" -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
 </html>
 EOF" && msg_ok "Template creato"
 
-# 8. Creazione del servizio systemd per avviare l'app con uvicorn
 msg_info "Creazione servizio systemd per uvicorn"
 pct exec "$CTID" -- bash -c "cat > /etc/systemd/system/webapp.service <<'EOF'
 [Unit]
