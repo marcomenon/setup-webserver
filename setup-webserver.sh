@@ -6,7 +6,7 @@
 # All'avvio l'utente sceglie se usare le impostazioni predefinite
 # oppure configurare manualmente ogni parametro.
 #
-# Autore: Marco Menon
+# Autore: (personalizza)
 # License: MIT
 # ===============================================================
 
@@ -90,6 +90,37 @@ function msg_warn() {
 }
 
 # -------------------------------------------
+# Selezione interattiva degli storage
+# -------------------------------------------
+function select_storage() {
+  local content="$1"  # "rootdir" per container, "vztmpl" per template
+  local label="$2"
+  local storages=()
+  while IFS= read -r line; do
+    storages+=("$(echo "$line" | awk '{print $1}')")
+  done < <(pvesm status -content "$content" | tail -n +2)
+  
+  if [ "${#storages[@]}" -eq 0 ]; then
+    msg_error "Nessuno storage per $label trovato."
+    exit 1
+  elif [ "${#storages[@]}" -eq 1 ]; then
+    echo "${storages[0]}"
+  else
+    local choices=()
+    for s in "${storages[@]}"; do
+      choices+=("$s" "" "OFF")
+    done
+    local selected
+    selected=$(whiptail --title "$label Storage" --radiolist \
+      "Scegli lo storage per $label:" 15 60 4 "${choices[@]}" 3>&1 1>&2 2>&3) || {
+      msg_error "Selezione interrotta."
+      exit 202
+    }
+    echo "$selected"
+  fi
+}
+
+# -------------------------------------------
 # Modalità di configurazione
 # -------------------------------------------
 MODE=$(whiptail --title "Modalità di Configurazione" --radiolist "Scegli la modalità:" 10 60 2 \
@@ -167,37 +198,6 @@ else
     FLASK_SECRET_KEY="defaultsecret"
   fi
 fi
-
-# -------------------------------------------
-# Selezione interattiva degli storage
-# -------------------------------------------
-function select_storage() {
-  local content="$1"  # "rootdir" per container, "vztmpl" per template
-  local label="$2"
-  local storages=()
-  while IFS= read -r line; do
-    storages+=("$(echo "$line" | awk '{print $1}')")
-  done < <(pvesm status -content "$content" | tail -n +2)
-  
-  if [ "${#storages[@]}" -eq 0 ]; then
-    msg_error "Nessuno storage per $label trovato."
-    exit 1
-  elif [ "${#storages[@]}" -eq 1 ]; then
-    echo "${storages[0]}"
-  else
-    local choices=()
-    for s in "${storages[@]}"; do
-      choices+=("$s" "" "OFF")
-    done
-    local selected
-    selected=$(whiptail --title "$label Storage" --radiolist \
-      "Scegli lo storage per $label:" 15 60 4 "${choices[@]}" 3>&1 1>&2 2>&3) || {
-      msg_error "Selezione interrotta."
-      exit 202
-    }
-    echo "$selected"
-  fi
-}
 
 # -------------------------------------------
 # Selezione degli storage per container e template
