@@ -365,7 +365,7 @@ fi
 # Configurazione del server all'interno del container
 # -------------------------------------------
 msg_info "Installazione pacchetti base nel container"
-pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
+pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y curl nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
 
 msg_info "Installazione di uv"
 pct exec "$CTID" -- bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh" && msg_ok "uv installato"
