@@ -120,23 +120,32 @@ function select_storage() {
 # -------------------------------------------
 # Input interattivo per impostazioni base
 # -------------------------------------------
-read -p "Inserisci Container ID (>= 100): " CTID
+CTID=$(whiptail --title "Container ID" --inputbox "Inserisci Container ID (>= 100):" 10 60 "" 3>&1 1>&2 2>&3)
 if ! [[ "$CTID" =~ ^[0-9]+$ ]] || [ "$CTID" -lt 100 ]; then
   msg_error "CTID deve essere un numero intero maggiore o uguale a 100."
   exit 205
 fi
 
-read -p "Inserisci Hostname del container: " HOSTNAME
+HOSTNAME=$(whiptail --title "Hostname" --inputbox "Inserisci il nome host del container:" 10 60 "" 3>&1 1>&2 2>&3)
+if [ -z "$HOSTNAME" ]; then
+  msg_error "Hostname non può essere vuoto."
+  exit 206
+fi
 
-# L'utente sceglie solo se usare debian o ubuntu
-read -p "Scegli sistema operativo (debian/ubuntu): " PCT_OSTYPE
-if [[ "$PCT_OSTYPE" == "debian" ]]; then
-  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.gz"
-elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
-  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.gz"
-else
+# L'utente sceglie il sistema operativo tramite un menu radiolist
+PCT_OSTYPE=$(whiptail --title "Sistema Operativo" --radiolist "Scegli il sistema operativo:" 10 60 2 \
+  "debian" "Debian" ON \
+  "ubuntu" "Ubuntu" OFF 3>&1 1>&2 2>&3)
+if [[ "$PCT_OSTYPE" != "debian" && "$PCT_OSTYPE" != "ubuntu" ]]; then
   msg_error "Sistema operativo non valido. Scegli 'debian' o 'ubuntu'."
   exit 1
+fi
+
+# Imposta il template in base alla scelta
+if [[ "$PCT_OSTYPE" == "debian" ]]; then
+  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
+elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
+  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.zst"
 fi
 
 # Impostazioni predefinite per container
