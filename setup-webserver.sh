@@ -3,7 +3,7 @@
 # Script semplificato per creare un container LXC su Proxmox
 # e configurare un webserver Flask con interfaccia admin.
 #
-# Autore: (personalizza)
+# Autore: Menon Marco
 # License: MIT
 # ===============================================================
 
@@ -127,8 +127,19 @@ if ! [[ "$CTID" =~ ^[0-9]+$ ]] || [ "$CTID" -lt 100 ]; then
 fi
 
 read -p "Inserisci Hostname del container: " HOSTNAME
+
+# Chiede solo il tipo di sistema operativo (debian o ubuntu)
 read -p "Scegli sistema operativo (debian/ubuntu): " PCT_OSTYPE
-read -p "Inserisci versione (es. '12' per Debian, '24.04' per Ubuntu): " PCT_OSVERSION
+
+# Imposta il template in base alla scelta (non si chiede la versione)
+if [[ "$PCT_OSTYPE" == "debian" ]]; then
+  DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.gz"
+elif [[ "$PCT_OSTYPE" == "ubuntu" ]]; then
+  DESIRED_TEMPLATE="ubuntu-24-standard_24.04-2_amd64.tar.gz"
+else
+  msg_error "Sistema operativo non valido. Scegli 'debian' o 'ubuntu'."
+  exit 1
+fi
 
 # Impostazioni predefinite per container
 DISK_SIZE=8     # in GB
@@ -160,21 +171,18 @@ pveam update >/dev/null
 msg_ok "Lista template aggiornata"
 
 # -------------------------------------------
-# Ricerca del template in base a OS e versione
+# Verifica che il template desiderato sia disponibile
 # -------------------------------------------
-TEMPLATE_SEARCH="${PCT_OSTYPE}-${PCT_OSVERSION}"
-mapfile -t TEMPLATES < <(pveam available -section system | grep -i "$TEMPLATE_SEARCH" | sort -V)
-if [ "${#TEMPLATES[@]}" -eq 0 ]; then
-  msg_error "Nessun template trovato per '$TEMPLATE_SEARCH'."
+if ! pveam available -section system | grep -qi "$DESIRED_TEMPLATE"; then
+  msg_error "Template $DESIRED_TEMPLATE non trovato nella lista dei template disponibili."
   exit 207
 fi
-# Seleziona l'ultimo template trovato (più recente)
-TEMPLATE="${TEMPLATES[-1]}"
+TEMPLATE="$DESIRED_TEMPLATE"
 TEMPLATE_PATH="/var/lib/vz/template/cache/$TEMPLATE"
 msg_ok "Template individuato: $TEMPLATE"
 
 # -------------------------------------------
-# Se il template non esiste o è corrotto, ricaricalo (fino a 3 tentativi)
+# Se il template non esiste o risulta corrotto, ricaricalo (fino a 3 tentativi)
 # -------------------------------------------
 if ! pveam list "$TEMPLATE_STORAGE" | grep -q "$TEMPLATE" || ! zstdcat "$TEMPLATE_PATH" 2>/dev/null | tar -tf - >/dev/null 2>&1; then
   msg_warn "Template $TEMPLATE non presente o corrotto. Ricaricamento..."
@@ -242,10 +250,9 @@ msg_ok "Container LXC $CTID creato con successo."
 # -------------------------------------------
 # Configurazione del server all'interno del container
 # -------------------------------------------
-# Attesa breve per essere sicuri che il container sia avviato
-sleep 5
+sleep 5  # Attesa per garantire che il container sia avviato
 
-# 1. Aggiornamento ed installazione dei pacchetti base
+# 1. Installazione pacchetti base
 msg_info "Installazione pacchetti base nel container"
 pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
 
@@ -271,12 +278,12 @@ ln -sf /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/ && rm -f /etc
 msg_info "Creazione struttura dell'applicazione in /opt/webapp"
 pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{app,static,templates}" && msg_ok "Struttura creata"
 
-# 4. Creazione del virtual environment ed installazione dei package (uv, flask, uvicorn, ecc.)
+# 4. Creazione del virtual environment ed installazione delle dipendenze
 msg_info "Setup ambiente Python e installazione dipendenze"
 pct exec "$CTID" -- bash -c "python3 -m venv /opt/webapp/venv && \
   source /opt/webapp/venv/bin/activate && uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
-# 5. Creazione del file .env per configurazione applicazione
+# 5. Creazione del file .env per l'applicazione
 msg_info "Creazione file .env"
 pct exec "$CTID" -- bash -c "cat > /opt/webapp/.env <<'EOF'
 FLASK_APP=app.py
