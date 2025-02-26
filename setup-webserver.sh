@@ -136,8 +136,8 @@ if [[ "$MODE" == "DEFAULT" ]]; then
   PCT_OSTYPE="debian"
   DESIRED_TEMPLATE="debian-12-standard_12.7-1_amd64.tar.zst"
   DISK_SIZE=8
-  CORE_COUNT=1
-  RAM_SIZE=1024
+  CORE_COUNT=2
+  RAM_SIZE=2048
   DB_TYPE="sqlite"
   ADMIN_USER="admin"
   ADMIN_PASSWORD="admin"
