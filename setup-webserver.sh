@@ -371,7 +371,7 @@ msg_info "Installazione di uv"
 pct exec "$CTID" -- bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh" && msg_ok "uv installato"
 
 msg_info "Riavvio del container per attivare uv"
-pct restart "$CTID"
+pct reboot "$CTID"
 sleep 5
 msg_ok "Container riavviato"
 
