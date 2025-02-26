@@ -1,103 +1,310 @@
 #!/bin/bash
-# Script per creare un CT su Proxmox e configurare un ambiente webserver production-ready
-# con gestione amministrativa minima in Flask e download automatico dei template se non presenti.
+# ===============================================================
+# Script per creare un container LXC Proxmox per un webserver Flask
+# con interfaccia avanzata e creazione container ispirata ai community‑scripts
+# (Copyright (c) 2021-2025 tteck, MickLesk, michelroegl-brunner)
+# License: MIT
+# ===============================================================
 
-# Se esiste un file .env nella cartella dello script, lo carica; altrimenti richiede i parametri
-if [ -f .env ]; then
-    echo ".env trovato. Carico i parametri..."
-    source .env
-else
-    # Parametri container
-    read -p "Inserisci il Container ID (CTID): " CTID
-    read -p "Inserisci il nome del container: " CTNAME
-    read -p "Scegli il sistema operativo (debian/ubuntu): " OS_CHOICE
-    read -s -p "Inserisci la password per il container: " CT_PASSWORD
-    echo ""
-    # Parametri database
-    read -p "Scegli il tipo di database (mariadb/sqlite): " DB_TYPE
-    if [ "$DB_TYPE" = "mariadb" ]; then
-         read -p "Nome del database: " DB_NAME
-         read -p "Nome utente per il database: " DB_USER
-         read -s -p "Password per il database: " DB_PASSWORD
-         echo ""
-    else
-         DB_NAME="webapp.db"
-    fi
-    # Parametri per l'amministrazione Flask
-    read -p "Inserisci l'username admin per Flask: " ADMIN_USER
-    read -s -p "Inserisci la password admin per Flask: " ADMIN_PASSWORD
-    echo ""
-    # Secret key per Flask
-    read -p "Inserisci la secret key per Flask (lascia vuoto per default 'defaultsecret'): " FLASK_SECRET_KEY
-    if [ -z "$FLASK_SECRET_KEY" ]; then
-        FLASK_SECRET_KEY="defaultsecret"
-    fi
-fi
+# Imposta il nome dell'applicazione (influirà anche sull'header e su alcune variabili)
+APP="Flask"
 
-# Verifica e modifica il nome del container se contiene underscore (non consentiti nei DNS)
-if [[ "$CTNAME" == *"_"* ]]; then
-    echo "Il nome del container contiene underscore. Sostituisco gli underscore con trattini."
-    CTNAME=$(echo "$CTNAME" | tr '_' '-')
-fi
+# Variabili di default per la creazione del container
+var_os="debian"          # Distribuzione predefinita (debian o ubuntu)
+var_version="12"         # Per debian: "12" (Bookworm) – per ubuntu potresti usare "24.04" (se supportato)
+var_disk="8"             # Dimensione del disco in GB (default 8 GB)
+var_cpu="1"              # Numero di core CPU
+var_ram="1024"           # RAM in MiB
+var_tags="flask"         # Tag associati al container
 
-# Definisce lo storage da usare per il download dei template
-STORAGE="local"
-TEMPLATE_DIR="/var/lib/vz/template/cache"
+# --------------------------
+# Funzioni di utilità e interfaccia
+# --------------------------
+# (Qui vengono definite o importate le funzioni prese dal repository community‑scripts)
 
-# Gestione dei template per Debian 12 e Ubuntu 24 con i nomi corretti
-if [ "$OS_CHOICE" = "debian" ]; then
-    TEMPLATE="$TEMPLATE_DIR/debian-12-standard_12.7-1_amd64.tar.gz"
-    if [ ! -f "$TEMPLATE" ]; then
-        echo "Template Debian 12 non trovato. Scaricamento in corso..."
-        pveam update
-        pveam download $STORAGE debian-12-standard_12.7-1_amd64.tar.gz
-    fi
-elif [ "$OS_CHOICE" = "ubuntu" ]; then
-    TEMPLATE="$TEMPLATE_DIR/ubuntu-24-standard_24.04-2_amd64.tar.gz"
-    if [ ! -f "$TEMPLATE" ]; then
-        echo "Template Ubuntu 24 non trovato. Scaricamento in corso..."
-        pveam update
-        pveam download $STORAGE ubuntu-24-standard_24.04-2_amd64.tar.gz
-    fi
-else
-    echo "Scelta del sistema operativo non valida. Esco."
+# Imposta le variabili di base (trasforma APP in minuscolo, genera un UUID, ecc.)
+variables() {
+  NSAPP=$(echo "${APP,,}" | tr -d ' ')
+  var_install="${NSAPP}-install"
+  INTEGER='^[0-9]+([.][0-9]+)?$'
+  PVEHOST_NAME=$(hostname)
+  DIAGNOSTICS="yes"
+  METHOD="default"
+  RANDOM_UUID="$(cat /proc/sys/kernel/random/uuid)"
+}
+
+# Scarica le funzioni API dal repository community‑scripts
+source <(curl -s https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
+
+# Funzione per definire colori e simboli per l’interfaccia
+color() {
+  YW="\033[33m"
+  YWB="\033[93m"
+  BL="\033[36m"
+  RD="\033[01;31m"
+  BGN="\033[4;92m"
+  GN="\033[1;92m"
+  DGN="\033[32m"
+  CL="\033[m"
+  UL="\033[4m"
+  BOLD="\033[1m"
+  TAB="  "
+  CM="${TAB}✔️${TAB}${CL}"
+  CROSS="${TAB}✖️${TAB}${CL}"
+  INFO="${TAB}💡${TAB}${CL}"
+  OS="${TAB}🖥️${TAB}${CL}"
+  OSVERSION="${TAB}🌟${TAB}${CL}"
+  CONTAINERTYPE="${TAB}📦${TAB}${CL}"
+  DISKSIZE="${TAB}💾${TAB}${CL}"
+  CPUCORE="${TAB}🧠${TAB}${CL}"
+  RAMSIZE="${TAB}🛠️${TAB}${CL}"
+  SEARCH="${TAB}🔍${TAB}${CL}"
+  VERIFYPW="${TAB}🔐${TAB}${CL}"
+  CONTAINERID="${TAB}🆔${TAB}${CL}"
+  HOSTNAME="${TAB}🏠${TAB}${CL}"
+  BRIDGE="${TAB}🌉${TAB}${CL}"
+  NETWORK="${TAB}📡${TAB}${CL}"
+  GATEWAY="${TAB}🌐${TAB}${CL}"
+  DISABLEIPV6="${TAB}🚫${TAB}${CL}"
+  DEFAULT="${TAB}⚙️${TAB}${CL}"
+  MACADDRESS="${TAB}🔗${TAB}${CL}"
+  VLANTAG="${TAB}🏷️${TAB}${CL}"
+  ROOTSSH="${TAB}🔑${TAB}${CL}"
+  CREATING="${TAB}🚀${TAB}${CL}"
+  ADVANCED="${TAB}🧩${TAB}${CL}"
+}
+
+# Abilita il controllo degli errori
+catch_errors() {
+  set -Eeuo pipefail
+  trap 'error_handler $LINENO "$BASH_COMMAND"' ERR
+}
+
+error_handler() {
+  if [ -n "${SPINNER_PID:-}" ] && ps -p "$SPINNER_PID" >/dev/null; then kill "$SPINNER_PID" >/dev/null; fi
+  printf "\e[?25h"
+  local exit_code="$?"
+  local line_number="$1"
+  local command="$2"
+  local error_message="${RD}[ERROR]${CL} in line ${RD}$line_number${CL}: exit code ${RD}$exit_code${CL}: executing command ${YW}$command${CL}"
+  echo -e "\n$error_message\n"
+  exit $exit_code
+}
+
+# Funzioni per lo spinner e messaggi di info/errore
+start_spinner() {
+  local msg="$1"
+  local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+  local spin_i=0
+  local interval=0.1
+  {
+    while [ "${SPINNER_ACTIVE:-1}" -eq 1 ]; do
+      printf "\r\033[2K${frames[spin_i]} ${YW}%b${CL}" "$msg" >&2
+      spin_i=$(((spin_i + 1) % ${#frames[@]}))
+      sleep "$interval"
+    done
+  } &
+  SPINNER_PID=$!
+}
+msg_info() { start_spinner "$1"; }
+msg_ok() {
+  if [ -n "${SPINNER_PID:-}" ] && ps -p "$SPINNER_PID" >/dev/null; then
+    kill "$SPINNER_PID" >/dev/null 2>&1
+    wait "$SPINNER_PID" 2>/dev/null || true
+  fi
+  printf "\r\033[2K${CM}${GN}%b${CL}\n" "$1" >&2
+  SPINNER_ACTIVE=0
+}
+msg_error() {
+  if [ -n "${SPINNER_PID:-}" ] && ps -p "$SPINNER_PID" >/dev/null; then
+    kill "$SPINNER_PID" >/dev/null 2>&1
+    wait "$SPINNER_PID" 2>/dev/null || true
+  fi
+  printf "\r\033[2K${CROSS}${RD}%b${CL}\n" "$1" >&2
+  SPINNER_ACTIVE=0
+}
+
+log_message() {
+  local level="$1"
+  local message="$2"
+  local timestamp
+  timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+  LOGDIR="/usr/local/community-scripts/logs"
+  mkdir -p "$LOGDIR"
+  LOGFILE="${LOGDIR}/$(date '+%Y-%m-%d')_${NSAPP}.log"
+  echo "$timestamp - $level: $message" >>"$LOGFILE"
+}
+
+# Controlli preliminari: shell, root, versione PVE, architettura, ecc.
+shell_check() {
+  if [[ "$(basename "$SHELL")" != "bash" ]]; then
+    msg_error "La shell predefinita non è Bash. Passa a Bash per utilizzare questo script."
     exit 1
-fi
+  fi
+}
+root_check() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    msg_error "Esegui questo script come root."
+    exit 1
+  fi
+}
+pve_check() {
+  if ! pveversion | grep -Eq "pve-manager/8\.[1-3]"; then
+    msg_error "Versione di Proxmox non supportata. Richiede almeno 8.1."
+    exit 1
+  fi
+}
+arch_check() {
+  if [ "$(dpkg --print-architecture)" != "amd64" ]; then
+    msg_error "Questo script funziona solo su architettura amd64."
+    exit 1
+  fi
+}
+ssh_check() {
+  if [ -n "${SSH_CLIENT:-}" ]; then
+    whiptail --backtitle "Proxmox VE Helper Scripts" --title "SSH Rilevato" --msgbox "È consigliato usare la shell di Proxmox e non una sessione SSH." 8 58
+  fi
+}
+maxkeys_check() {
+  # (Implementazione semplificata per il controllo delle chiavi kernel)
+  true
+}
+diagnostics_check() {
+  # (Implementazione base: se non esiste il file, viene creato con DIAGNOSTICS=yes)
+  [ -f "/usr/local/community-scripts/diagnostics" ] || echo "DIAGNOSTICS=yes" > /usr/local/community-scripts/diagnostics
+}
 
-echo "Creazione del container $CTNAME ($CTID) con template $TEMPLATE..."
-pct create $CTID "$TEMPLATE" \
-  --hostname "$CTNAME" \
-  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
-  --memory 512 \
-  --rootfs local-lvm:8 \
-  --password "$CT_PASSWORD"
+# Funzione per mostrare un header ASCII (se disponibile) e pulire lo schermo
+header_info() {
+  clear
+  echo -e "${BOLD}${BL}======== Creazione LXC per ${APP} ========"${CL}
+}
 
-echo "Avvio del container..."
-pct start $CTID
-sleep 5  # Attesa per consentire l'avvio
+# Funzioni per impostare le configurazioni di base e avanzate (usando whiptail)
+base_settings() {
+  CT_TYPE="1"         # Default: Unprivileged
+  DISK_SIZE="$var_disk"
+  CORE_COUNT="$var_cpu"
+  RAM_SIZE="$var_ram"
+  VERB="${1:-no}"
+  CT_ID=$(pvesh get /cluster/nextid)
+  HN="${NSAPP:-flask}"
+  BRG="vmbr0"
+  NET="dhcp"
+  TAGS="community-script;${var_tags}"
+}
+echo_default() {
+  local CT_TYPE_DESC="Unprivileged"
+  if [ "$CT_TYPE" -eq 0 ]; then
+    CT_TYPE_DESC="Privileged"
+  fi
+  echo -e "${OS}${BOLD}OS: ${BGN}${var_os}${CL}"
+  echo -e "${OSVERSION}${BOLD}Version: ${BGN}${var_version}${CL}"
+  echo -e "${CONTAINERTYPE}${BOLD}Container Type: ${BGN}${CT_TYPE_DESC}${CL}"
+  echo -e "${DISKSIZE}${BOLD}Disk: ${BGN}${DISK_SIZE} GB${CL}"
+  echo -e "${CPUCORE}${BOLD}CPU Cores: ${BGN}${CORE_COUNT}${CL}"
+  echo -e "${RAMSIZE}${BOLD}RAM: ${BGN}${RAM_SIZE} MiB${CL}"
+  echo -e "${CONTAINERID}${BOLD}CTID: ${BGN}${CT_ID}${CL}"
+  echo -e "${HOSTNAME}${BOLD}Hostname: ${BGN}${HN}${CL}"
+  echo -e "${BRIDGE}${BOLD}Bridge: ${BGN}${BRG}${CL}"
+}
+advanced_settings() {
+  # Esempio semplificato: in ambiente reale qui si userebbe whiptail per impostare le opzioni
+  var_os=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DISTRIBUTION" --radiolist "Scegli distribuzione:" 10 58 2 \
+    "debian" "Debian" ON "ubuntu" "Ubuntu" OFF 3>&1 1>&2 2>&3)
+  if [ "$var_os" == "debian" ]; then
+    var_version=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "DEBIAN VERSION" --radiolist "Scegli versione:" 10 58 2 \
+      "11" "Bullseye" OFF "12" "Bookworm" ON 3>&1 1>&2 2>&3)
+  else
+    var_version=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "UBUNTU VERSION" --radiolist "Scegli versione:" 10 58 2 \
+      "22.04" "Jammy" ON "24.04" "Noble" OFF 3>&1 1>&2 2>&3)
+  fi
+  CT_TYPE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "CONTAINER TYPE" --radiolist "Scegli tipo container:" 10 58 2 \
+    "1" "Unprivileged" ON "0" "Privileged" OFF 3>&1 1>&2 2>&3)
+  HN=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Imposta Hostname" 8 58 "${NSAPP:-flask}" --title "HOSTNAME" 3>&1 1>&2 2>&3)
+  BRG=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Imposta Bridge" 8 58 "vmbr0" --title "BRIDGE" 3>&1 1>&2 2>&3)
+}
+exit_script() {
+  msg_error "Script interrotto dall'utente."
+  exit 1
+}
 
-echo "Aggiornamento e installazione dei pacchetti di base..."
-if [ "$DB_TYPE" = "mariadb" ]; then
-    pct exec $CTID -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3"
-else
-    pct exec $CTID -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server sqlite3 mariadb-server"
-fi
+# Funzione per creare il container utilizzando il sistema community‑scripts
+build_container() {
+  # Imposta alcune opzioni aggiuntive
+  if [ "$CT_TYPE" == "1" ]; then
+    FEATURES="keyctl=1,nesting=1"
+  else
+    FEATURES="nesting=1"
+  fi
+  export CTID="$CT_ID"
+  export HN
+  export PCT_OSTYPE="$var_os"
+  export PCT_OSVERSION="$var_version"
+  export PCT_DISK_SIZE="$DISK_SIZE"
+  export PCT_OPTIONS="-features $FEATURES -hostname $HN -tags $TAGS -net0 name=eth0,bridge=$BRG,ip=$NET -onboot 1 -cores $CORE_COUNT -memory $RAM_SIZE -unprivileged $CT_TYPE"
+  # Esegue lo script di creazione LXC preso dal repository community‑scripts
+  bash -c "$(wget -qLO - https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/create_lxc.sh)" || exit $?
+}
 
-if [ "$DB_TYPE" = "mariadb" ]; then
-    echo "Configurazione di MariaDB..."
-    pct exec $CTID -- bash -c "mysql -e \"CREATE DATABASE IF NOT EXISTS ${DB_NAME};\""
-    pct exec $CTID -- bash -c "mysql -e \"CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';\""
-    pct exec $CTID -- bash -c "mysql -e \"GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';\""
-    pct exec $CTID -- bash -c "mysql -e \"FLUSH PRIVILEGES;\""
-fi
+# Imposta controlli preliminari e variabili
+variables
+color
+catch_errors
+shell_check
+root_check
+pve_check
+arch_check
+ssh_check
+maxkeys_check
+diagnostics_check
 
-echo "Configurazione di nginx per il reverse proxy..."
-pct exec $CTID -- bash -c "cat > /etc/nginx/sites-available/webapp <<'EOF'
+NEXTID=$(pvesh get /cluster/nextid)
+timezone=$(cat /etc/timezone)
+header_info
+
+# Scegli tra Default o Advanced Settings
+CHOICE=$(whiptail --backtitle "Proxmox VE Helper Scripts" --title "SETTINGS" --menu "Scegli un'opzione:" 12 50 3 \
+  "1" "Default Settings" \
+  "2" "Advanced Settings" \
+  "3" "Esci" --nocancel --default-item "1" 3>&1 1>&2 2>&3)
+case $CHOICE in
+  1)
+    VERB="no"
+    base_settings "$VERB"
+    echo_default
+    ;;
+  2)
+    VERB="yes"
+    base_settings "$VERB"
+    advanced_settings
+    echo_default
+    ;;
+  3)
+    exit_script
+    ;;
+esac
+
+# Costruisce il container LXC
+msg_info "Creazione del container in corso..."
+build_container
+msg_ok "Container creato con successo!"
+
+# -----------------------------------------------------
+# Configurazione post-creazione: installa pacchetti e setup app
+# -----------------------------------------------------
+CTID="$CT_ID"  # ID del container appena creato
+sleep 5  # Attesa per garantire che il container sia avviato
+
+msg_info "Installazione dei pacchetti base nel container..."
+pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
+
+msg_info "Configurazione di nginx per il reverse proxy..."
+pct exec "$CTID" -- bash -c "cat > /etc/nginx/sites-available/webapp <<'EOF'
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
-
     location / {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host \$host;
@@ -106,58 +313,36 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
-EOF"
-pct exec $CTID -- bash -c "ln -sf /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/ && rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx"
+EOF
+ln -sf /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/ && rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx" && msg_ok "Nginx configurato"
 
-echo "Creazione della struttura dell'applicazione in /opt/webapp..."
-pct exec $CTID -- bash -c "mkdir -p /opt/webapp/{app,static,templates}"
+msg_info "Creazione della struttura dell'applicazione..."
+pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{app,static,templates}" && msg_ok "Struttura creata"
 
-echo "Creazione del virtual environment..."
-pct exec $CTID -- bash -c "python3 -m venv /opt/webapp/venv"
+msg_info "Creazione del virtual environment e installazione dei package (uv, flask, uvicorn, ecc.)..."
+pct exec "$CTID" -- bash -c "python3 -m venv /opt/webapp/venv && \
+  source /opt/webapp/venv/bin/activate && uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
-echo "Inizializzazione del progetto con 'uv' e installazione dei package necessari..."
-pct exec $CTID -- bash -c "source /opt/webapp/venv/bin/activate && uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql"
+msg_info "Creazione del file .env per la configurazione dell'app..."
+pct exec "$CTID" -- bash -c "cat > /opt/webapp/.env <<'EOF'
+FLASK_APP=app.py
+FLASK_SECRET_KEY=defaultsecret
+DB_TYPE=sqlite
+EOF" && msg_ok ".env creato"
 
-echo "Creazione del file .env per l'applicazione..."
-if [ "$DB_TYPE" = "mariadb" ]; then
-    ENV_CONTENT="FLASK_APP=app.py
-FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
-DB_TYPE=${DB_TYPE}
-DB_USER=${DB_USER}
-DB_PASSWORD=${DB_PASSWORD}
-DB_NAME=${DB_NAME}"
-else
-    ENV_CONTENT="FLASK_APP=app.py
-FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
-DB_TYPE=${DB_TYPE}"
-fi
-pct exec $CTID -- bash -c "echo \"$ENV_CONTENT\" > /opt/webapp/.env"
-
-echo "Creazione di /opt/webapp/app/app.py..."
-pct exec $CTID -- bash -c "cat > /opt/webapp/app/app.py <<'EOF'
+msg_info "Creazione dell'applicazione Flask..."
+pct exec "$CTID" -- bash -c "cat > /opt/webapp/app/app.py <<'EOF'
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 import os
-
 app = Flask(__name__, template_folder='../templates')
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'defaultsecret')
-
-db_type = os.environ.get('DB_TYPE', 'sqlite')
-if db_type == 'mariadb':
-    db_user = os.environ.get('DB_USER', 'webapp')
-    db_password = os.environ.get('DB_PASSWORD', 'password')
-    db_name = os.environ.get('DB_NAME', 'webapp')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_password}@localhost/{db_name}'
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///webapp.db'
-
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///webapp.db'
 db = SQLAlchemy(app)
-
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
-
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if request.method == 'POST':
@@ -171,19 +356,17 @@ def admin():
             return redirect(url_for('admin'))
     users = User.query.all()
     return render_template('admin.html', users=users)
-
 @app.route('/')
 def index():
-    return "Hello, World! Visit /admin to manage users."
-
+    return 'Hello, World! Visit /admin to manage users.'
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host='0.0.0.0', port=5000)
-EOF"
+EOF" && msg_ok "App Flask creata"
 
-echo "Creazione di /opt/webapp/templates/admin.html..."
-pct exec $CTID -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
+msg_info "Creazione del template per la pagina admin..."
+pct exec "$CTID" -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
 <!doctype html>
 <html>
 <head>
@@ -200,10 +383,10 @@ pct exec $CTID -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
       </ul>
     {% endif %}
   {% endwith %}
-  <form method=\"post\">
-    <input type=\"text\" name=\"username\" placeholder=\"Username\" required>
-    <input type=\"password\" name=\"password\" placeholder=\"Password\" required>
-    <button type=\"submit\">Aggiungi Utente</button>
+  <form method='post'>
+    <input type='text' name='username' placeholder='Username' required>
+    <input type='password' name='password' placeholder='Password' required>
+    <button type='submit'>Aggiungi Utente</button>
   </form>
   <h2>Utenti Esistenti</h2>
   <ul>
@@ -213,26 +396,33 @@ pct exec $CTID -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
   </ul>
 </body>
 </html>
-EOF"
+EOF" && msg_ok "Template creato"
 
-echo "Creazione del servizio systemd per avviare l'app con uvicorn..."
-pct exec $CTID -- bash -c "cat > /etc/systemd/system/webapp.service <<'EOF'
+msg_info "Creazione del servizio systemd per avviare l'app con uvicorn..."
+pct exec "$CTID" -- bash -c "cat > /etc/systemd/system/webapp.service <<'EOF'
 [Unit]
 Description=Uvicorn instance to serve webapp
 After=network.target
-
 [Service]
 User=root
 Group=www-data
 WorkingDirectory=/opt/webapp/app
 EnvironmentFile=/opt/webapp/.env
 ExecStart=/opt/webapp/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5000
-
 [Install]
 WantedBy=multi-user.target
-EOF"
+EOF
+systemctl daemon-reload && systemctl enable webapp && systemctl start webapp" && msg_ok "Servizio avviato"
 
-echo "Abilitazione e avvio del servizio webapp..."
-pct exec $CTID -- bash -c "systemctl daemon-reload && systemctl enable webapp && systemctl start webapp"
+# Imposta una descrizione nel container (opzionale)
+description() {
+  IP=$(pct exec "$CT_ID" ip a s dev eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+  DESCRIPTION="<div align='center'>
+    <h2>${APP} LXC</h2>
+    <p>Indirizzo IP: ${IP}</p>
+  </div>"
+  pct set "$CT_ID" -description "$DESCRIPTION"
+}
+description
 
-echo "Configurazione completata. Il webserver e la gestione admin sono pronti!"
+echo -e "\n${BOLD}${GN}Configurazione completata. Il webserver Flask e l'interfaccia admin sono pronti!${CL}"
