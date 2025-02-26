@@ -34,7 +34,14 @@ else
     fi
 fi
 
-# Directory dei template di Proxmox
+# Verifica e modifica il nome del container se contiene underscore (non consentiti nei DNS)
+if [[ "$CTNAME" == *"_"* ]]; then
+    echo "Il nome del container contiene underscore. Sostituisco gli underscore con trattini."
+    CTNAME=$(echo "$CTNAME" | tr '_' '-')
+fi
+
+# Definisce lo storage da usare per il download dei template
+STORAGE="local"
 TEMPLATE_DIR="/var/lib/vz/template/cache"
 
 # Gestione dei template per Debian 12 e Ubuntu 24 con i nomi corretti
@@ -43,14 +50,14 @@ if [ "$OS_CHOICE" = "debian" ]; then
     if [ ! -f "$TEMPLATE" ]; then
         echo "Template Debian 12 non trovato. Scaricamento in corso..."
         pveam update
-        pveam download local debian-12-standard_12.7-1_amd64.tar.gz
+        pveam download $STORAGE debian-12-standard_12.7-1_amd64.tar.gz
     fi
 elif [ "$OS_CHOICE" = "ubuntu" ]; then
     TEMPLATE="$TEMPLATE_DIR/ubuntu-24-standard_24.04-2_amd64.tar.gz"
     if [ ! -f "$TEMPLATE" ]; then
         echo "Template Ubuntu 24 non trovato. Scaricamento in corso..."
         pveam update
-        pveam download local ubuntu-24-standard_24.04-2_amd64.tar.gz
+        pveam download $STORAGE ubuntu-24-standard_24.04-2_amd64.tar.gz
     fi
 else
     echo "Scelta del sistema operativo non valida. Esco."
