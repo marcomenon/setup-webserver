@@ -1,0 +1,83 @@
+# Aggiungi un nuovo utente (ti verrà chiesta la password e alcune informazioni)
+sudo adduser flaskuser
+# Aggiungi l'utente al gruppo sudo per dargli i privilegi amministrativi
+sudo usermod -aG sudo flaskuser
+# Aggiorna il sistema
+sudo apt update && sudo apt upgrade -y
+# Installa Python3, il modulo per creare ambienti virtuali, pip e Nginx
+sudo apt install -y python3 python3-venv python3-pip nginx
+# Installa UV
+wget -qO- https://astral.sh/uv/install.sh | sh
+# Crea una directory per la tua applicazione e spostati al suo interno
+mkdir ~/flaskapp && cd ~/flaskapp
+# Crea un progetto UV
+uv init
+# Installa Flask e Gunicorn (che fungerà da WSGI server)
+uv add flask gunicorn
+# Modifica main.py con questo contenuto:
+cat > main.py << 'EOF'
+from flask import Flask
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "Hello, World! This is my Flask app running behind Nginx!"
+
+if __name__ == "__main__":
+    app.run()
+EOF
+# Testa l'app con Gunicorn (ascoltando sulla porta 8000)
+uv run gunicorn --bind 0.0.0.0:8000 main:app
+# Crea file di configurazione NGINX sostituendo your_server_domain_or_IP
+sudo cat > /etc/nginx/sites-available/flaskapp << 'EOF'
+server {
+    listen 80;
+    server_name your_server_domain_or_IP;  # Sostituisci con il tuo dominio o IP
+
+    # Inoltra le altre richieste all'app Flask in esecuzione su Gunicorn
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Serve i file statici
+    location /static/ {
+        alias /home/flaskuser/flaskapp/static/;  # Sostituisci con il percorso assoluto della directory static nella tua app
+        expires 30d;
+    }
+
+    # Serve i file media (se la tua app li usa, ad esempio per upload)
+    location /media/ {
+        alias /home/flaskuser/flaskapp/media/;  # Sostituisci con il percorso assoluto della directory media nella tua app
+        expires 30d;
+    }
+}
+EOF
+# Crea file di  file di servizio systemd per GUNICORN
+sudo cat > /etc/systemd/system/gunicorn.service << 'EOF'
+[Unit]
+Description=Gunicorn instance to serve flaskapp
+After=network.target
+
+[Service]
+User=flaskuser
+Group=www-data
+WorkingDirectory=/home/flaskuser/flaskapp
+ExecStart=/home/flaskuser/flaskapp/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 main:app
+
+[Install]
+WantedBy=multi-user.target
+EOF
+# Abilita la configurazione e riavvia NGINX
+sudo ln -s /etc/nginx/sites-available/flaskapp /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+# Ricarica i daemon, avvia GUNICORN daemon e lo abilita in startup
+sudo systemctl daemon-reload
+sudo systemctl start gunicorn
+sudo systemctl enable gunicorn
+# Verifica lo stato del daemon
+sudo systemctl status gunicorn
