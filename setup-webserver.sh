@@ -298,7 +298,9 @@ pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{app,static,templates}" && msg
 # 4. Creazione del virtual environment ed installazione delle dipendenze
 msg_info "Setup ambiente Python e installazione dipendenze"
 pct exec "$CTID" -- bash -c "python3 -m venv /opt/webapp/venv && \
-  source /opt/webapp/venv/bin/activate && uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
+  source /opt/webapp/venv/bin/activate && \
+  curl -LsSf https://astral.sh/uv/install.sh | sh && \
+  uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
 # 5. Creazione del file .env per l'applicazione
 msg_info "Creazione file .env"
