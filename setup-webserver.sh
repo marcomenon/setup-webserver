@@ -365,15 +365,7 @@ fi
 # Configurazione del server all'interno del container
 # -------------------------------------------
 msg_info "Installazione pacchetti base nel container"
-pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y curl nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
-
-msg_info "Installazione di uv"
-pct exec "$CTID" -- bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh" && msg_ok "uv installato"
-
-msg_info "Riavvio del container per attivare uv"
-pct reboot "$CTID"
-sleep 5
-msg_ok "Container riavviato"
+pct exec "$CTID" -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3" && msg_ok "Pacchetti installati"
 
 msg_info "Configurazione di nginx"
 pct exec "$CTID" -- bash -c "cat > /etc/nginx/sites-available/webapp <<'EOF'
@@ -393,34 +385,32 @@ EOF
 ln -sf /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/ && rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx" && msg_ok "Nginx configurato"
 
 msg_info "Creazione struttura dell'applicazione in /opt/webapp"
-pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{app,static,templates}" && msg_ok "Struttura creata"
+pct exec "$CTID" -- bash -c "mkdir -p /opt/webapp/{static,templates}" && msg_ok "Struttura creata"
 
 msg_info "Setup ambiente Python e installazione dipendenze"
-pct exec "$CTID" -- bash -c "python3 -m venv /opt/webapp/venv && \
-  source /opt/webapp/venv/bin/activate && \
-  uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
+pct exec "$CTID" -- bash -c "cd /opt/webapp/ && curl -LsSf https://astral.sh/uv/install.sh | sh && uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql" && msg_ok "Ambiente Python pronto"
 
 msg_info "Creazione file .env"
 if [[ "$DB_TYPE" == "mariadb" ]]; then
-  ENV_CONTENT="FLASK_APP=app.py
+  ENV_CONTENT="FLASK_APP=main.py
 FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
 DB_TYPE=${DB_TYPE}
 DB_USER=${DB_USER}
 DB_PASSWORD=${DB_PASSWORD}
 DB_NAME=${DB_NAME}"
 else
-  ENV_CONTENT="FLASK_APP=app.py
+  ENV_CONTENT="FLASK_APP=main.py
 FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
 DB_TYPE=${DB_TYPE}"
 fi
 pct exec "$CTID" -- bash -c "echo \"$ENV_CONTENT\" > /opt/webapp/.env" && msg_ok ".env creato"
 
-msg_info "Creazione applicazione Flask (app.py)"
-pct exec "$CTID" -- bash -c "cat > /opt/webapp/app/app.py <<'EOF'
+msg_info "Creazione applicazione Flask (main.py)"
+pct exec "$CTID" -- bash -c "cat > /opt/webapp/main.py <<'EOF'
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 import os
-app = Flask(__name__, template_folder='../templates')
+app = Flask(__name__, template_folder='templates')
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'defaultsecret')
 if os.environ.get('DB_TYPE') == 'mariadb':
     db_user = os.environ.get('DB_USER', 'webappuser')
@@ -497,9 +487,9 @@ After=network.target
 [Service]
 User=root
 Group=www-data
-WorkingDirectory=/opt/webapp/app
+WorkingDirectory=/opt/webapp
 EnvironmentFile=/opt/webapp/.env
-ExecStart=/opt/webapp/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5000
+ExecStart=/opt/webapp/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 5000
 [Install]
 WantedBy=multi-user.target
 EOF
