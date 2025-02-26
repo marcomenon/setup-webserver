@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script per creare un CT su Proxmox e configurare un ambiente webserver production-ready
-# con gestione amministrativa minima in Flask.
+# con gestione amministrativa minima in Flask e download automatico dei template se non presenti.
 
 # Se esiste un file .env nella cartella dello script, lo carica; altrimenti richiede i parametri
 if [ -f .env ]; then
@@ -34,18 +34,31 @@ else
     fi
 fi
 
-# Definizione del template in base alla scelta di OS
+# Directory dei template di Proxmox
+TEMPLATE_DIR="/var/lib/vz/template/cache"
+
+# Gestione dei template per Debian 12 e Ubuntu 24 con i nomi corretti
 if [ "$OS_CHOICE" = "debian" ]; then
-    TEMPLATE="/var/lib/vz/template/cache/debian-10-standard_10.7-1_amd64.tar.gz"
+    TEMPLATE="$TEMPLATE_DIR/debian-12-standard_12.7-1_amd64.tar.gz"
+    if [ ! -f "$TEMPLATE" ]; then
+        echo "Template Debian 12 non trovato. Scaricamento in corso..."
+        pveam update
+        pveam download local debian-12-standard_12.7-1_amd64.tar.gz
+    fi
 elif [ "$OS_CHOICE" = "ubuntu" ]; then
-    TEMPLATE="/var/lib/vz/template/cache/ubuntu-20.04-standard_20.04-1_amd64.tar.gz"
+    TEMPLATE="$TEMPLATE_DIR/ubuntu-24-standard_24.04-2_amd64.tar.gz"
+    if [ ! -f "$TEMPLATE" ]; then
+        echo "Template Ubuntu 24 non trovato. Scaricamento in corso..."
+        pveam update
+        pveam download local ubuntu-24-standard_24.04-2_amd64.tar.gz
+    fi
 else
     echo "Scelta del sistema operativo non valida. Esco."
     exit 1
 fi
 
 echo "Creazione del container $CTNAME ($CTID) con template $TEMPLATE..."
-pct create $CTID $TEMPLATE \
+pct create $CTID "$TEMPLATE" \
   --hostname "$CTNAME" \
   --net0 name=eth0,bridge=vmbr0,ip=dhcp \
   --memory 512 \
@@ -57,14 +70,12 @@ pct start $CTID
 sleep 5  # Attesa per consentire l'avvio
 
 echo "Aggiornamento e installazione dei pacchetti di base..."
-# Installazione dei pacchetti base; se si usa MariaDB vengono installati anche i pacchetti relativi
 if [ "$DB_TYPE" = "mariadb" ]; then
     pct exec $CTID -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server mariadb-server sqlite3"
 else
     pct exec $CTID -- bash -c "apt update && apt upgrade -y && apt install -y nginx python3 python3-venv openssh-server sqlite3 mariadb-server"
 fi
 
-# Configurazione del database se si usa MariaDB
 if [ "$DB_TYPE" = "mariadb" ]; then
     echo "Configurazione di MariaDB..."
     pct exec $CTID -- bash -c "mysql -e \"CREATE DATABASE IF NOT EXISTS ${DB_NAME};\""
@@ -73,7 +84,6 @@ if [ "$DB_TYPE" = "mariadb" ]; then
     pct exec $CTID -- bash -c "mysql -e \"FLUSH PRIVILEGES;\""
 fi
 
-# Configurazione di nginx: reverse proxy verso uvicorn sulla porta 5000
 echo "Configurazione di nginx per il reverse proxy..."
 pct exec $CTID -- bash -c "cat > /etc/nginx/sites-available/webapp <<'EOF'
 server {
@@ -92,20 +102,15 @@ server {
 EOF"
 pct exec $CTID -- bash -c "ln -sf /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/ && rm -f /etc/nginx/sites-enabled/default && systemctl restart nginx"
 
-# Creazione della struttura dell'applicazione
 echo "Creazione della struttura dell'applicazione in /opt/webapp..."
 pct exec $CTID -- bash -c "mkdir -p /opt/webapp/{app,static,templates}"
 
-# Creazione del virtual environment
 echo "Creazione del virtual environment..."
 pct exec $CTID -- bash -c "python3 -m venv /opt/webapp/venv"
 
-# Inizializzazione del progetto con uv e installazione dei package necessari:
-# vengono installati flask, uvicorn, valkey, flask_sqlalchemy e pymysql per MariaDB
-echo "Inizializzazione del progetto con 'uv' e installazione dei package..."
+echo "Inizializzazione del progetto con 'uv' e installazione dei package necessari..."
 pct exec $CTID -- bash -c "source /opt/webapp/venv/bin/activate && uv init && uv add flask uvicorn valkey flask_sqlalchemy pymysql"
 
-# Creazione del file .env per l'applicazione in /opt/webapp
 echo "Creazione del file .env per l'applicazione..."
 if [ "$DB_TYPE" = "mariadb" ]; then
     ENV_CONTENT="FLASK_APP=app.py
@@ -121,14 +126,12 @@ DB_TYPE=${DB_TYPE}"
 fi
 pct exec $CTID -- bash -c "echo \"$ENV_CONTENT\" > /opt/webapp/.env"
 
-# Creazione del file app.py con gestione minima di amministrazione e tabella utenti
 echo "Creazione di /opt/webapp/app/app.py..."
 pct exec $CTID -- bash -c "cat > /opt/webapp/app/app.py <<'EOF'
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 import os
 
-# Configurazione dell'applicazione
 app = Flask(__name__, template_folder='../templates')
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'defaultsecret')
 
@@ -143,16 +146,11 @@ else:
 
 db = SQLAlchemy(app)
 
-# Modello per gli utenti
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
 
-    def __repr__(self):
-        return f\"<User {self.username}>\"
-
-# Rotta per la gestione amministrativa
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if request.method == 'POST':
@@ -169,7 +167,7 @@ def admin():
 
 @app.route('/')
 def index():
-    return \"Hello, World! Visit /admin to manage users.\"
+    return "Hello, World! Visit /admin to manage users."
 
 if __name__ == '__main__':
     with app.app_context():
@@ -177,7 +175,6 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
 EOF"
 
-# Creazione del template per la pagina admin
 echo "Creazione di /opt/webapp/templates/admin.html..."
 pct exec $CTID -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
 <!doctype html>
@@ -211,8 +208,7 @@ pct exec $CTID -- bash -c "cat > /opt/webapp/templates/admin.html <<'EOF'
 </html>
 EOF"
 
-# Creazione del servizio systemd per avviare l'app con uvicorn
-echo "Creazione del servizio systemd per avviare l'app..."
+echo "Creazione del servizio systemd per avviare l'app con uvicorn..."
 pct exec $CTID -- bash -c "cat > /etc/systemd/system/webapp.service <<'EOF'
 [Unit]
 Description=Uvicorn instance to serve webapp
@@ -229,7 +225,6 @@ ExecStart=/opt/webapp/venv/bin/uvicorn app:app --host 0.0.0.0 --port 5000
 WantedBy=multi-user.target
 EOF"
 
-# Ricarica systemd e avvio del servizio
 echo "Abilitazione e avvio del servizio webapp..."
 pct exec $CTID -- bash -c "systemctl daemon-reload && systemctl enable webapp && systemctl start webapp"
 
