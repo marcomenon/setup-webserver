@@ -6,18 +6,31 @@ sudo usermod -aG sudo flaskuser
 sudo apt update && sudo apt upgrade -y
 # Installa Python3, il modulo per creare ambienti virtuali, pip e Nginx
 sudo apt install -y python3 python3-venv python3-pip nginx
+# Aggiungi l’utente al gruppo www-data per gestire i permessi:
+sudo usermod -aG www-data flaskuser
+# Crea le directory per i file statici e media
+sudo mkdir -p /var/www/flaskapp/static /var/www/flaskapp/media
+# Imposta il proprietario e il gruppo della directory su www-data
+sudo chown -R www-data:www-data /var/www/flaskapp
+# Imposta i permessi affinchè tutti i file e le directory create al suo interno ereditino il gruppo www-data per leggere, scrivere ed eseguire, mentre gli altri utenti possono leggere ed eseguire.
+sudo chmod -R 2775 /var/www/flaskapp
 # Installa UV
 wget -qO- https://astral.sh/uv/install.sh | sh
 # Crea una directory per la tua applicazione e spostati al suo interno
 mkdir ~/flaskapp && cd ~/flaskapp
 # Crea un progetto UV
 uv init
-# Installa Flask e Gunicorn (che fungerà da WSGI server)
-uv add flask gunicorn
+# Installa Flask e Gunicorn (che fungerà da WSGI server) ed alcune dipendenze
+uv add flask gunicorn flask Flask-Collect
 # Modifica main.py con questo contenuto:
 cat > main.py << 'EOF'
 from flask import Flask
+from flask_collect import Collect
+
 app = Flask(__name__)
+app.config['COLLECT_STATIC_ROOT'] = '/var/www/flaskapp/static'
+collect = Collect(app)
+app.config['COLLECT_STATIC_DIRS'] = ['static']
 
 @app.route('/')
 def hello():
@@ -45,14 +58,16 @@ server {
 
     # Serve i file statici
     location /static/ {
-        alias /home/flaskuser/flaskapp/static/;  # Sostituisci con il percorso assoluto della directory static nella tua app
+        alias /var/www/flaskapp/static/;
         expires 30d;
+        add_header Cache-Control "public";
     }
 
     # Serve i file media (se la tua app li usa, ad esempio per upload)
     location /media/ {
-        alias /home/flaskuser/flaskapp/media/;  # Sostituisci con il percorso assoluto della directory media nella tua app
+        alias /var/www/flaskapp/media/;
         expires 30d;
+        add_header Cache-Control "public";
     }
 }
 EOF
@@ -66,7 +81,11 @@ After=network.target
 User=flaskuser
 Group=www-data
 WorkingDirectory=/home/flaskuser/flaskapp
+Environment="FLASK_APP=main.py"
+# Esegui la raccolta dei file statici prima di avviare Gunicorn
+ExecStartPre=/home/flaskuser/flaskapp/.venv/bin/flask collect --noinput
 ExecStart=/home/flaskuser/flaskapp/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 main:app
+ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
 WantedBy=multi-user.target
