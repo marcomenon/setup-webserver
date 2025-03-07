@@ -11,7 +11,7 @@ DB_PASS="password_$PROJ_NAME"
 REDIS_PORT="6379"
 NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
 UFW_PORTS=(80 3306 6379)  # 3306 per MariaDB, 6379 per Redis, 80 per HTTP
-PROJ_HOME="/home/$$PROJ_NAME"
+PROJ_HOME="/home/$PROJ_NAME"
 WWW_DIR="/var/www/$PROJ_NAME"
 
 echo "==============================="
