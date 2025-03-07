@@ -91,7 +91,7 @@ chown "$ADMIN_USER:$ADMIN_USER" "$PROJ_HOME/.env"
 chmod 600 "$PROJ_HOME/.env"
 
 # ========================
-# 🔹 7️⃣ Configurazione Nginx
+# 🔹 7️⃣ Configurazione Nginx (senza env_file e rimozione default)
 # ========================
 echo "🔹 Creazione configurazione Nginx..."
 cat > "$NGINX_CONF" <<EOF
@@ -113,12 +113,12 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        env_file $PROJ_HOME/.env;
     }
 }
 EOF
 
 ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default  # 🔥 Rimuove il file di default
 nginx -t && systemctl restart nginx
 
 # ========================
