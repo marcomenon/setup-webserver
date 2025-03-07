@@ -40,7 +40,7 @@ chown -R www-data:www-data "$WWW_DIR"
 # 🔹 2️⃣ Installazione di Pacchetti Necessari
 # ========================
 echo "🔹 Installazione di pacchetti..."
-apt update && apt install -y nginx mariadb-server redis python3-pip python3-venv
+apt update && apt install -y build-essential  pkg-config nginx mariadb-server default-libmysqlclient-dev redis python3-pip python3-venv python3-dev
 
 # ========================
 # 🔹 3️⃣ Configurazione Database MariaDB
