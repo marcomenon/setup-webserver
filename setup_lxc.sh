@@ -63,7 +63,7 @@ systemctl restart redis
 # ========================
 echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
 sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
-sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip gunicorn uv"
+sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv gunicorn"
 
 # ========================
 # 🔹 6️⃣ Creazione del file .env con variabili d'ambiente
@@ -145,7 +145,7 @@ User=$ADMIN_USER
 Group=www-data
 WorkingDirectory=$PROJ_HOME
 EnvironmentFile=$PROJ_HOME/.env
-ExecStart=$PROJ_HOME/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 wsgi:app
+ExecStart=$PROJ_HOME/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 core.wsgi:application
 
 [Install]
 WantedBy=multi-user.target
