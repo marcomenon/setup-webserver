@@ -9,6 +9,8 @@ chmod +x setup-webserver.sh
 ./setup-webserver.sh
 
 
+Script per il setup di un Container LXC - Django - Gunicorn - MariaDB - Redis - Nginx
+
 wget https://raw.githubusercontent.com/marcomenon/setup-webserver/main/setup_lxc.sh -O setup_lxc.sh
 
 chmod +x setup_lxc.sh
