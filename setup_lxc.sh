@@ -3,17 +3,20 @@
 # ========================
 # 📌 VARIABILI CONFIGURABILI
 # ========================
-PROJ_NAME="mio_progetto"  # Nome del progetto
-PROJ_DOMAIN="example.com" # Dominio del progetto
-ADMIN_USER="admin_$PROJ_NAME"  # Nome utente amministrativo
+PROJ_NAME="mio_progetto"  
+PROJ_DOMAIN="example.com"
+ADMIN_USER="admin_$PROJ_NAME"
+ADMIN_PASS="pass_$PROJ_NAME"
+WWW_DIR="/var/www/$PROJ_NAME"
+NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
+PROJ_HOME="/home/$PROJ_NAME"
 DB_NAME="mariadb_$PROJ_NAME"
 DB_USER="user_$PROJ_NAME"
 DB_PASS="password_$PROJ_NAME"
 REDIS_PORT="6379"
-NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
 UFW_PORTS=(80 3306 6379)  # 3306 per MariaDB, 6379 per Redis, 80 per HTTP
-PROJ_HOME="/home/$PROJ_NAME"
-WWW_DIR="/var/www/$PROJ_NAME"
+
+
 
 # Ottiene l'indirizzo IP della macchina
 MACHINE_IP=$(hostname -I | awk '{print $1}')
@@ -59,7 +62,7 @@ echo "==============================="
 # ========================
 echo "🔹 Creazione dell'utente e impostazione della password..."
 useradd -m -s /bin/bash -G sudo,www-data "$ADMIN_USER"
-echo "$ADMIN_USER:$PROJ_NAME" | chpasswd
+echo "$ADMIN_USER:$ADMIN_PASS" | chpasswd
 
 echo "🔹 Creazione delle cartelle di progetto..."
 mkdir -p "$PROJ_HOME"
