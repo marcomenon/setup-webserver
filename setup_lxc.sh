@@ -10,7 +10,7 @@ read -s -p "Inserisci la password amministrativa: " ADMIN_PASS
 
 echo -e "\nConfigurazione in corso per il progetto: $PROJ_NAME ($PROJ_DOMAIN) con utente $ADMIN_USER"
 
-GIT_REPO="https://github.com/marcomenon/djangoweb.git"
+GIT_REPO="https://github.com/marcomenon/djangoproject.git"
 WWW_DIR="/var/www/$PROJ_NAME"
 NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
 PROJ_HOME="/home/$PROJ_NAME"
