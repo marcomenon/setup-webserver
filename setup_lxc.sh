@@ -4,6 +4,7 @@
 # 📌 VARIABILI CONFIGURABILI
 # ========================
 PROJ_NAME="mio_progetto"  # Nome del progetto
+PROJ_DOMAIN="example.com" # Dominio del progetto
 ADMIN_USER="admin_$PROJ_NAME"  # Nome utente amministrativo
 DB_NAME="mariadb_$PROJ_NAME"
 DB_USER="user_$PROJ_NAME"
@@ -14,6 +15,35 @@ UFW_PORTS=(80 3306 6379)  # 3306 per MariaDB, 6379 per Redis, 80 per HTTP
 PROJ_HOME="/home/$PROJ_NAME"
 WWW_DIR="/var/www/$PROJ_NAME"
 
+# Ottiene l'indirizzo IP della macchina
+MACHINE_IP=$(hostname -I | awk '{print $1}')
+
+# Variabili per il file .env
+DJANGO_SECRET_KEY=$(openssl rand -hex 32)
+DEBUG="True"
+MAINTENANCE_MODE="True"
+ALLOWED_MAINTENANCE_HOSTS="localhost"
+ALLOWED_MAINTENANCE_IPS="$MACHINE_IP"
+ALLOWED_HOSTS_DOMAIN="$PROJ_NAME.$PROJ_DOMAIN"
+ALLOWED_HOSTS_IP="127.0.0.1"
+EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST="smtp.gmail.com"
+EMAIL_PORT="587"
+EMAIL_HOST_USER="your_email@gmail.com"
+EMAIL_HOST_PASSWORD="your_email_password"
+EMAIL_USE_TLS="true"
+EMAIL_TIMEOUT="10"
+DEFAULT_FROM_EMAIL="$EMAIL_HOST_USER"
+LANGUAGE_CODE="it-IT"
+TIME_ZONE="Europe/Rome"
+STATIC_ROOT="$WWW_DIR/static"
+MEDIA_ROOT="$WWW_DIR/media"
+ACCOUNT_EMAIL_VERIFICATION="none"
+ACCOUNT_LOGIN_METHODS="username"
+ACCOUNT_EMAIL_REQUIRED="false"
+ACCOUNT_USERNAME_REQUIRED="true"
+
+# Stampa delle informazioni
 echo "==============================="
 echo "⚙️  Configurazione per: $PROJ_NAME"
 echo "👤 Utente: $ADMIN_USER"
@@ -21,6 +51,7 @@ echo "📂 Home directory: $PROJ_HOME"
 echo "🛢️  Database: $DB_NAME (utente: $DB_USER)"
 echo "📦 Redis in ascolto su: $REDIS_PORT"
 echo "🌐 Nginx configurato per servire $PROJ_NAME"
+echo "🌍 Dominio configurato: $ALLOWED_HOSTS_DOMAIN"
 echo "==============================="
 
 # ========================
@@ -76,23 +107,23 @@ sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip insta
 echo "🔹 Creazione del file .env..."
 cat > "$PROJ_HOME/.env" <<EOF
 # Configurazione ambiente per $PROJ_NAME
-DJANGO_SECRET_KEY=$(openssl rand -hex 32)
-DEBUG=True
-MAINTENANCE_MODE=True
-ALLOWED_MAINTENANCE_HOSTS=localhost
-ALLOWED_MAINTENANCE_IPS=192.168.151.22
-ALLOWED_HOSTS_DOMAIN=example.com
-ALLOWED_HOSTS_IP=127.0.0.1
+DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY
+DEBUG=$DEBUG
+MAINTENANCE_MODE=$MAINTENANCE_MODE
+ALLOWED_MAINTENANCE_HOSTS=$ALLOWED_MAINTENANCE_HOSTS
+ALLOWED_MAINTENANCE_IPS=$ALLOWED_MAINTENANCE_IPS
+ALLOWED_HOSTS_DOMAIN=$ALLOWED_HOSTS_DOMAIN
+ALLOWED_HOSTS_IP=$ALLOWED_HOSTS_IP
 
 # Email
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your_email@gmail.com
-EMAIL_HOST_PASSWORD=your_email_password
-EMAIL_USE_TLS=true
-EMAIL_TIMEOUT=10
-DEFAULT_FROM_EMAIL=your_email@gmail.com
+EMAIL_BACKEND=$EMAIL_BACKEND
+EMAIL_HOST=$EMAIL_HOST
+EMAIL_PORT=$EMAIL_PORT
+EMAIL_HOST_USER=$EMAIL_HOST_USER
+EMAIL_HOST_PASSWORD=$EMAIL_HOST_PASSWORD
+EMAIL_USE_TLS=$EMAIL_USE_TLS
+EMAIL_TIMEOUT=$EMAIL_TIMEOUT
+DEFAULT_FROM_EMAIL=$DEFAULT_FROM_EMAIL
 
 # Database
 DB_NAME=$DB_NAME
@@ -106,18 +137,18 @@ REDIS_HOST=localhost
 REDIS_PORT=$REDIS_PORT
 
 # Internazionalizzazione
-LANGUAGE_CODE=it-IT
-TIME_ZONE=Europe/Rome
+LANGUAGE_CODE=$LANGUAGE_CODE
+TIME_ZONE=$TIME_ZONE
 
 # Static e Media
-STATIC_ROOT=$WWW_DIR/static
-MEDIA_ROOT=$WWW_DIR/media
+STATIC_ROOT=$STATIC_ROOT
+MEDIA_ROOT=$MEDIA_ROOT
 
 # Allauth
-ACCOUNT_EMAIL_VERIFICATION=none
-ACCOUNT_LOGIN_METHODS=username
-ACCOUNT_EMAIL_REQUIRED=false
-ACCOUNT_USERNAME_REQUIRED=true
+ACCOUNT_EMAIL_VERIFICATION=$ACCOUNT_EMAIL_VERIFICATION
+ACCOUNT_LOGIN_METHODS=$ACCOUNT_LOGIN_METHODS
+ACCOUNT_EMAIL_REQUIRED=$ACCOUNT_EMAIL_REQUIRED
+ACCOUNT_USERNAME_REQUIRED=$ACCOUNT_USERNAME_REQUIRED
 EOF
 
 chown "$ADMIN_USER:$ADMIN_USER" "$PROJ_HOME/.env"
@@ -188,6 +219,9 @@ systemctl daemon-reload
 systemctl enable gunicorn_$PROJ_NAME
 systemctl start gunicorn_$PROJ_NAME
 
+# ========================
+# ✅ Configurazione completata
+# ========================
 echo "✅ Configurazione completata con successo!"
 echo "📂 Il file .env è stato creato in: $PROJ_HOME/.env"
 echo "📦 Virtual environment: $PROJ_HOME/.venv"
