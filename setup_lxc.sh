@@ -16,8 +16,6 @@ DB_PASS="password_$PROJ_NAME"
 REDIS_PORT="6379"
 UFW_PORTS=(80 3306 6379)  # 3306 per MariaDB, 6379 per Redis, 80 per HTTP
 
-
-
 # Ottiene l'indirizzo IP della macchina
 MACHINE_IP=$(hostname -I | awk '{print $1}')
 
