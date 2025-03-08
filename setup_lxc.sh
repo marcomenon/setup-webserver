@@ -64,7 +64,7 @@ echo "==============================="
 # 🔹 Installazione di Pacchetti Necessari
 # ========================
 echo "🔹 Installazione di pacchetti..."
-apt update && apt install -y build-essential pkg-config nginx postgresql postgresql-contrib redis python3-pip python3-venv python3-dev git
+apt update && apt install -y build-essential pkg-config nginx postgresql postgresql-contrib redis python3-pip python3-venv python3-dev libpq-dev python3-dev gcc git
 
 # ========================
 # 🔹 Creazione Utente e Cartelle
@@ -89,6 +89,12 @@ sudo -u postgres psql -c "ALTER ROLE $DB_USER SET client_encoding TO 'utf8';"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET default_transaction_isolation TO 'read committed';"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET timezone TO 'Europe/Rome';"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
+sudo -u postgres psql -c "ALTER USER $DB_USER WITH CREATEDB;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
+sudo -u postgres psql -c "GRANT USAGE, CREATE ON SCHEMA public TO $DB_USER;"
+sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;"
+sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;"
+sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DB_USER;"
 
 # ========================
 # 🔹 Configurazione Redis
