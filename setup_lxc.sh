@@ -78,7 +78,21 @@ cat > "$PROJ_HOME/.env" <<EOF
 # Configurazione ambiente per $PROJ_NAME
 DJANGO_SECRET_KEY=$(openssl rand -hex 32)
 DEBUG=True
-ALLOWED_HOSTS=*
+MAINTENANCE_MODE=True
+ALLOWED_MAINTENANCE_HOSTS=localhost
+ALLOWED_MAINTENANCE_IPS=192.168.151.22
+ALLOWED_HOSTS_DOMAIN=example.com
+ALLOWED_HOSTS_IP=127.0.0.1
+
+# Email
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=your_email@gmail.com
+EMAIL_HOST_PASSWORD=your_email_password
+EMAIL_USE_TLS=true
+EMAIL_TIMEOUT=10
+DEFAULT_FROM_EMAIL=your_email@gmail.com
 
 # Database
 DB_NAME=$DB_NAME
@@ -90,6 +104,20 @@ DB_PORT=3306
 # Redis
 REDIS_HOST=localhost
 REDIS_PORT=$REDIS_PORT
+
+# Internazionalizzazione
+LANGUAGE_CODE=it-IT
+TIME_ZONE=Europe/Rome
+
+# Static e Media
+STATIC_ROOT=$WWW_DIR/static
+MEDIA_ROOT=$WWW_DIR/media
+
+# Allauth
+ACCOUNT_EMAIL_VERIFICATION=none
+ACCOUNT_LOGIN_METHODS=username
+ACCOUNT_EMAIL_REQUIRED=false
+ACCOUNT_USERNAME_REQUIRED=true
 EOF
 
 chown "$ADMIN_USER:$ADMIN_USER" "$PROJ_HOME/.env"
