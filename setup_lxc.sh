@@ -178,7 +178,7 @@ chmod 600 "$PROJ_HOME/.env"
 # ========================
 echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
 sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
-sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv gunicorn && uv sync"
+sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv gunicorn && uv sync && deactivate"
 
 # ========================
 # 🔹 Configurazione Nginx (senza env_file e rimozione default)
