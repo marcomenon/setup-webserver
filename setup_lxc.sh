@@ -10,6 +10,7 @@ read -s -p "Inserisci la password amministrativa: " ADMIN_PASS
 
 echo -e "\nConfigurazione in corso per il progetto: $PROJ_NAME ($PROJ_DOMAIN) con utente $ADMIN_USER"
 
+GIT_REPO="https://github.com/marcomenon/djangoweb.git"
 WWW_DIR="/var/www/$PROJ_NAME"
 NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
 PROJ_HOME="/home/$PROJ_NAME"
@@ -28,7 +29,7 @@ DEBUG="True"
 MAINTENANCE_MODE="True"
 ALLOWED_MAINTENANCE_HOSTS="localhost"
 ALLOWED_MAINTENANCE_IPS="$MACHINE_IP"
-ALLOWED_HOSTS_DOMAIN="$PROJ_NAME.$PROJ_DOMAIN"
+ALLOWED_HOSTS_DOMAIN="*.$PROJ_NAME.$PROJ_DOMAIN"
 ALLOWED_HOSTS_IP="127.0.0.1"
 EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST="smtp.gmail.com"
@@ -49,17 +50,24 @@ ACCOUNT_USERNAME_REQUIRED="true"
 
 # Stampa delle informazioni
 echo "==============================="
-echo "⚙️  Configurazione per: $PROJ_NAME"
+echo "⚙️ Configurazione per: $PROJ_NAME"
 echo "👤 Utente: $ADMIN_USER"
 echo "📂 Home directory: $PROJ_HOME"
-echo "🛢️  Database: $DB_NAME (utente: $DB_USER)"
+echo "📥 Repository Git: $GIT_REPO"
+echo "🛢️ Database: $DB_NAME (utente: $DB_USER)"
 echo "📦 Redis in ascolto su: $REDIS_PORT"
 echo "🌐 Nginx configurato per servire $PROJ_NAME"
 echo "🌍 Dominio configurato: $ALLOWED_HOSTS_DOMAIN"
 echo "==============================="
 
 # ========================
-# 🔹 1️⃣ Creazione Utente e Cartelle
+# 🔹 Installazione di Pacchetti Necessari
+# ========================
+echo "🔹 Installazione di pacchetti..."
+apt update && apt install -y build-essential pkg-config nginx mariadb-server default-libmysqlclient-dev redis python3-pip python3-venv python3-dev git
+
+# ========================
+# 🔹 Creazione Utente e Cartelle
 # ========================
 echo "🔹 Creazione dell'utente e impostazione della password..."
 useradd -m -s /bin/bash -G sudo,www-data "$ADMIN_USER"
@@ -77,13 +85,7 @@ chmod -R g+rw "$WWW_DIR"
 find "$WWW_DIR" -type d -exec chmod g+s {} \;
 
 # ========================
-# 🔹 2️⃣ Installazione di Pacchetti Necessari
-# ========================
-echo "🔹 Installazione di pacchetti..."
-apt update && apt install -y build-essential  pkg-config nginx mariadb-server default-libmysqlclient-dev redis python3-pip python3-venv python3-dev
-
-# ========================
-# 🔹 3️⃣ Configurazione Database MariaDB
+# 🔹 Configurazione Database MariaDB
 # ========================
 echo "🔹 Configurazione di MariaDB..."
 mysql -e "CREATE DATABASE $DB_NAME;"
@@ -92,21 +94,38 @@ mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
 mysql -e "FLUSH PRIVILEGES;"
 
 # ========================
-# 🔹 4️⃣ Configurazione Redis
+# 🔹 Configurazione Redis
 # ========================
 echo "🔹 Configurazione di Redis..."
 sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
 systemctl restart redis
 
 # ========================
-# 🔹 5️⃣ Creazione del Virtual Environment e Installazione Gunicorn + uv
+# 🔹 Clonazione della repository Django
+# ========================
+echo "🔹 Clonazione della repository..."
+sudo -u "$ADMIN_USER" bash -c "git clone $GIT_REPO $PROJ_HOME"
+
+if [ ! -d "$PROJ_HOME" ]; then
+    echo "❌ Errore: La clonazione della repository non è riuscita!"
+    exit 1
+fi
+
+# ========================
+# 🔹 Modifica del file pyproject.toml
+# ========================
+echo "🔹 Aggiornamento del nome del progetto in pyproject.toml..."
+sed -i "s/^name = \".*\"/name = \"$PROJ_NAME\"/" "$PROJ_HOME/pyproject.toml"
+
+# ========================
+# 🔹 Creazione del Virtual Environment e Installazione Gunicorn + uv
 # ========================
 echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
 sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
 sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv gunicorn"
 
 # ========================
-# 🔹 6️⃣ Creazione del file .env con variabili d'ambiente
+# 🔹 Creazione del file .env con variabili d'ambiente
 # ========================
 echo "🔹 Creazione del file .env..."
 cat > "$PROJ_HOME/.env" <<EOF
@@ -159,7 +178,14 @@ chown "$ADMIN_USER:$ADMIN_USER" "$PROJ_HOME/.env"
 chmod 600 "$PROJ_HOME/.env"
 
 # ========================
-# 🔹 7️⃣ Configurazione Nginx (senza env_file e rimozione default)
+# 🔹 Creazione del Virtual Environment e Installazione Gunicorn + uv
+# ========================
+echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
+sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
+sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv gunicorn"
+
+# ========================
+# 🔹 Configurazione Nginx (senza env_file e rimozione default)
 # ========================
 echo "🔹 Creazione configurazione Nginx..."
 cat > "$NGINX_CONF" <<EOF
@@ -186,11 +212,11 @@ server {
 EOF
 
 ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default  # 🔥 Rimuove il file di default
+rm -f /etc/nginx/sites-enabled/default  
 nginx -t && systemctl restart nginx
 
 # ========================
-# 🔹 8️⃣ Configurazione UFW (Firewall)
+# 🔹 Configurazione UFW (Firewall)
 # ========================
 echo "🔹 Configurazione di UFW..."
 ufw allow OpenSSH
@@ -200,7 +226,7 @@ done
 ufw --force enable
 
 # ========================
-# 🔹 9️⃣ Creazione del servizio systemd per Gunicorn
+# 🔹 Creazione del servizio systemd per Gunicorn
 # ========================
 echo "🔹 Creazione del servizio per Gunicorn..."
 cat > "/etc/systemd/system/gunicorn_$PROJ_NAME.service" <<EOF
@@ -227,6 +253,7 @@ systemctl start gunicorn_$PROJ_NAME
 # ✅ Configurazione completata
 # ========================
 echo "✅ Configurazione completata con successo!"
+echo "📌 Repository clonata in: $PROJ_HOME"
 echo "📂 Il file .env è stato creato in: $PROJ_HOME/.env"
 echo "📦 Virtual environment: $PROJ_HOME/.venv"
 echo "🐍 Gunicorn e uv installati in: $PROJ_HOME/.venv"
