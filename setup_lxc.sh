@@ -99,7 +99,7 @@ systemctl restart redis
 # 🔹 Clonazione della repository Django
 # ========================
 echo "🔹 Clonazione della repository..."
-sudo -u "$ADMIN_USER" bash -c "git clone $GIT_REPO $PROJ_HOME"
+git clone $GIT_REPO $PROJ_HOME
 
 if [ ! -d "$PROJ_HOME" ]; then
     echo "❌ Errore: La clonazione della repository non è riuscita!"
