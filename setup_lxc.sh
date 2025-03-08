@@ -33,8 +33,13 @@ echo "$ADMIN_USER:$PROJ_NAME" | chpasswd
 echo "🔹 Creazione delle cartelle di progetto..."
 mkdir -p "$PROJ_HOME"
 mkdir -p "$WWW_DIR/static" "$WWW_DIR/media"
+
 chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
 chown -R www-data:www-data "$WWW_DIR"
+
+chmod -R g+rw "$WWW_DIR"
+
+find "$WWW_DIR" -type d -exec chmod g+s {} \;
 
 # ========================
 # 🔹 2️⃣ Installazione di Pacchetti Necessari
