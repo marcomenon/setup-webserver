@@ -74,14 +74,9 @@ useradd -m -s /bin/bash -G sudo,www-data "$ADMIN_USER"
 echo "$ADMIN_USER:$ADMIN_PASS" | chpasswd
 
 echo "🔹 Creazione delle cartelle di progetto..."
-mkdir -p "$PROJ_HOME"
 mkdir -p "$WWW_DIR/static" "$WWW_DIR/media"
-
-chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
 chown -R www-data:www-data "$WWW_DIR"
-
 chmod -R g+rw "$WWW_DIR"
-
 find "$WWW_DIR" -type d -exec chmod g+s {} \;
 
 # ========================
@@ -116,6 +111,7 @@ fi
 # ========================
 echo "🔹 Aggiornamento del nome del progetto in pyproject.toml..."
 sed -i "s/^name = \".*\"/name = \"$PROJ_NAME\"/" "$PROJ_HOME/pyproject.toml"
+chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
 
 # ========================
 # 🔹 Creazione del Virtual Environment e Installazione Gunicorn + uv
