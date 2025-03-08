@@ -14,11 +14,11 @@ GIT_REPO="https://github.com/marcomenon/djangoproject.git"
 WWW_DIR="/var/www/$PROJ_NAME"
 NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
 PROJ_HOME="/home/$PROJ_NAME"
-DB_NAME="mariadb_$PROJ_NAME"
+DB_NAME="postgres_$PROJ_NAME"
 DB_USER="user_$PROJ_NAME"
 DB_PASS="password_$PROJ_NAME"
 REDIS_PORT="6379"
-UFW_PORTS=(80 3306 6379)  # 3306 per MariaDB, 6379 per Redis, 80 per HTTP
+UFW_PORTS=(80 5432 6379)  # 5432 per PostgreSQL, 6379 per Redis, 80 per HTTP
 
 # Ottiene l'indirizzo IP della macchina
 MACHINE_IP=$(hostname -I | awk '{print $1}')
@@ -64,7 +64,7 @@ echo "==============================="
 # 🔹 Installazione di Pacchetti Necessari
 # ========================
 echo "🔹 Installazione di pacchetti..."
-apt update && apt install -y build-essential pkg-config nginx mariadb-server default-libmysqlclient-dev redis python3-pip python3-venv python3-dev git
+apt update && apt install -y build-essential pkg-config nginx postgresql postgresql-contrib redis python3-pip python3-venv python3-dev git
 
 # ========================
 # 🔹 Creazione Utente e Cartelle
@@ -80,13 +80,15 @@ chmod -R g+rw "$WWW_DIR"
 find "$WWW_DIR" -type d -exec chmod g+s {} \;
 
 # ========================
-# 🔹 Configurazione Database MariaDB
+# 🔹 Configurazione Database PostgreSQL
 # ========================
-echo "🔹 Configurazione di MariaDB..."
-mysql -e "CREATE DATABASE $DB_NAME;"
-mysql -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-mysql -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
-mysql -e "FLUSH PRIVILEGES;"
+echo "🔹 Configurazione di PostgreSQL..."
+sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;"
+sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
+sudo -u postgres psql -c "ALTER ROLE $DB_USER SET client_encoding TO 'utf8';"
+sudo -u postgres psql -c "ALTER ROLE $DB_USER SET default_transaction_isolation TO 'read committed';"
+sudo -u postgres psql -c "ALTER ROLE $DB_USER SET timezone TO 'Europe/Rome';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
 
 # ========================
 # 🔹 Configurazione Redis
@@ -118,7 +120,7 @@ chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
 # ========================
 echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
 sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
-sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv gunicorn"
+sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv && uv sync && deactivate"
 
 # ========================
 # 🔹 Creazione del file .env con variabili d'ambiente
@@ -149,7 +151,7 @@ DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASS=$DB_PASS
 DB_HOST=localhost
-DB_PORT=3306
+DB_PORT=5432
 
 # Redis
 REDIS_HOST=localhost
