@@ -1,12 +1,15 @@
 #!/bin/bash
 
 # ========================
-# 📌 VARIABILI CONFIGURABILI
+# 📌 INPUT VARIABILI CONFIGURABILI
 # ========================
-PROJ_NAME="mio_progetto"  
-PROJ_DOMAIN="example.com"
-ADMIN_USER="admin_$PROJ_NAME"
-ADMIN_PASS="pass_$PROJ_NAME"
+read -p "Inserisci il nome del progetto: " PROJ_NAME
+read -p "Inserisci il dominio del progetto: " PROJ_DOMAIN
+read -p "Inserisci il nome utente amministrativo: " ADMIN_USER
+read -s -p "Inserisci la password amministrativa: " ADMIN_PASS
+
+echo -e "\nConfigurazione in corso per il progetto: $PROJ_NAME ($PROJ_DOMAIN) con utente $ADMIN_USER"
+
 WWW_DIR="/var/www/$PROJ_NAME"
 NGINX_CONF="/etc/nginx/sites-available/$PROJ_NAME"
 PROJ_HOME="/home/$PROJ_NAME"
