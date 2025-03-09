@@ -179,7 +179,7 @@ services:
     depends_on:
       - django
     ports:
-      - "$NGINX_CONF:80"
+      - "$NGINX_PORT:80"
     volumes:
       - $NGINX_CONF:/etc/nginx/nginx.conf:ro
       - $STATIC_ROOT:/app/static
