@@ -27,6 +27,8 @@ DB_PORT="5432"
 REDIS_HOST="localhost"
 REDIS_PORT="6379"
 
+PG_VERSION="17"
+PG_HBA_CONF="/etc/postgresql/$PG_VERSION/main/pg_hba.conf"
 NGINX_CONF="/etc/nginx/conf.d/$PROJ_NAME.conf"
 UFW_PORTS=(80 5432 6379)
 
@@ -83,6 +85,13 @@ find "$WWW_DIR" -type d -exec chmod g+s {} \;
 # ==============================
 # 📌 CONFIGURAZIONE POSTGRESQL
 # ==============================
+echo "🔹 Modifica di $PG_HBA_CONF per consentire l'accesso..."
+sed -i 's/local   all             postgres                            peer/local   all             postgres                            trust/' "$PG_HBA_CONF"
+sed -i 's/local   all             all                                     peer/local   all             all                                     password/' "$PG_HBA_CONF"
+
+echo "🔹 Riavvio di PostgreSQL..."
+systemctl restart postgresql
+
 echo "🔹 Configurazione PostgreSQL..."
 sudo -u postgres psql <<EOF
 CREATE DATABASE $DB_NAME;
