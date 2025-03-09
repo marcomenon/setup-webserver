@@ -17,7 +17,7 @@ PROJ_HOME="/home/$PROJ_NAME"
 DB_NAME="postgres_$PROJ_NAME"
 DB_USER="user_$PROJ_NAME"
 DB_PASS="password_$PROJ_NAME"
-DB_APPR="appuser_$PROJ_NAME"
+DB_APPR="approle_$PROJ_NAME"
 REDIS_PORT="6379"
 UFW_PORTS=(80 5432 6379)  # 5432 per PostgreSQL, 6379 per Redis, 80 per HTTP
 
