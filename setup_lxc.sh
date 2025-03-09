@@ -17,6 +17,7 @@ PROJ_HOME="/home/$PROJ_NAME"
 DB_NAME="postgres_$PROJ_NAME"
 DB_USER="user_$PROJ_NAME"
 DB_PASS="password_$PROJ_NAME"
+DB_APPR="appuser_$PROJ_NAME"
 REDIS_PORT="6379"
 UFW_PORTS=(80 5432 6379)  # 5432 per PostgreSQL, 6379 per Redis, 80 per HTTP
 
@@ -85,16 +86,21 @@ find "$WWW_DIR" -type d -exec chmod g+s {} \;
 echo "🔹 Configurazione di PostgreSQL..."
 sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;"
 sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
+sudo -u postgres psql -c "ALTER DATABASE $DB_NAME OWNER TO $DB_USER;"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET client_encoding TO 'utf8';"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET default_transaction_isolation TO 'read committed';"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET timezone TO 'Europe/Rome';"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
 sudo -u postgres psql -c "ALTER USER $DB_USER WITH CREATEDB;"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
 sudo -u postgres psql -c "GRANT USAGE, CREATE ON SCHEMA public TO $DB_USER;"
+sudo -u postgres psql -c "GRANT ALL ON SCHEMA public TO $DB_USER;"
 sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;"
 sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;"
 sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DB_USER;"
+sudo -u postgres psql -c "ALTER SCHEMA public OWNER TO $DB_USER;"
+sudo -u postgres psql -c "CREATE ROLE $DB_APPR;"
+sudo -u postgres psql -c "GRANT $DB_APPR TO $DB_USER;"
+systemctl restart postgresql
 
 # ========================
 # 🔹 Configurazione Redis
@@ -156,6 +162,8 @@ DEFAULT_FROM_EMAIL=$DEFAULT_FROM_EMAIL
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASS=$DB_PASS
+DB_APPR=$DB_APPR
+DB_ENGINE=django.db.backends.postgresql
 DB_HOST=localhost
 DB_PORT=5432
 
