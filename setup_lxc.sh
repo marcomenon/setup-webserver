@@ -135,11 +135,11 @@ DB_ENGINE=django.db.backends.postgresql
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASS=$DB_PASS
-DB_HOST=postgres
+DB_HOST=localhost
 DB_PORT=$DB_PORT
 
 # Redis
-REDIS_HOST=redis
+REDIS_HOST=localhost
 REDIS_PORT=$REDIS_PORT
 
 # Internazionalizzazione
