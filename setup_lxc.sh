@@ -132,8 +132,8 @@ chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
 # ========================
 echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
 sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
-sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv && uv sync && deactivate"
-
+sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv"
+sudo -u "$ADMIN_USER" bash -c "source $PROJ_HOME/.venv/bin/activate && uv sync"
 # ========================
 # 🔹 Creazione del file .env con variabili d'ambiente
 # ========================
