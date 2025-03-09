@@ -142,7 +142,7 @@ MAINTENANCE_MODE=true
 # ========================
 ALLOWED_MAINTENANCE_HOSTS="localhost"
 ALLOWED_MAINTENANCE_IPS="$(hostname -I | awk '{print $1}')"
-ALLOWED_HOSTS_DOMAIN="*.$PROJ_NAME.$PROJ_DOMAIN"
+ALLOWED_HOSTS_DOMAIN="$PROJ_NAME.$PROJ_DOMAIN"
 ALLOWED_HOSTS_IP="127.0.0.1"
 
 # ========================
