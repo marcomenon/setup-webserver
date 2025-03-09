@@ -1,0 +1,336 @@
+Pacchetti:
+-----------------------------------------------------------
+apt update && apt install -y lsb-release curl gpg gnupg2 ca-certificates ubuntu-keyring git python3-pip python3-venv python3-dev libpq-dev gcc gettext
+
+Redis:
+------------------------------------------------------------
+curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/redis.list
+apt update
+apt-get install redis -y
+systemctl enable redis-server
+systemctl start redis-server
+
+Nginx:
+-----------------------------------------------------------
+curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor \
+| tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+http://nginx.org/packages/ubuntu `lsb_release -cs` nginx" \
+    | tee /etc/apt/sources.list.d/nginx.list
+echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" \
+    | tee /etc/apt/preferences.d/99nginx
+apt update
+apt install nginx
+nginx
+
+Postgresql:
+-----------------------------------------------------------
+install -d /usr/share/postgresql-common/pgdg
+curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+apt update
+apt -y install postgresql
+
+Config Postgresql:
+-----------------------------------------------------------
+
+nano /etc/postgresql/17/main/pg_hba.conf
+local   all             postgres                            peer   =>    md5 
+local   all             all                            peer   =>   password
+sudo systemctl restart postgresql
+psql -U postgres
+
+CREATE DATABASE postgres_djangoproject;
+CREATE USER user_djangoproject WITH PASSWORD 'password_djangoproject';
+ALTER ROLE user_djangoproject SET client_encoding TO 'utf8';
+ALTER ROLE user_djangoproject SET default_transaction_isolation TO 'read committed';
+ALTER ROLE user_djangoproject SET timezone TO 'Europe/Rome';
+GRANT ALL PRIVILEGES ON DATABASE postgres_djangoproject TO user_djangoproject;
+CREATE ROLE user_djangoproject WITH LOGIN PASSWORD 'password_djangoproject';
+ALTER ROLE user_djangoproject CREATEDB;
+ALTER DATABASE postgres_djangoproject OWNER TO user_djangoproject;
+GRANT USAGE, CREATE ON SCHEMA public TO user_djangoproject;
+GRANT ALL PRIVILEGES ON SCHEMA public TO user_djangoproject;
+\q
+
+# ========================
+# 🔹 Creazione Utente e Cartelle
+# ========================
+
+echo "🔹 Creazione dell'utente e impostazione della password..."
+useradd -m -s /bin/bash -G sudo,www-data django
+echo django:Zeliel.87 | chpasswd
+
+echo "🔹 Creazione delle cartelle di progetto..."
+mkdir -p /var/www/djangoproject/static /var/www/djangoproject/media
+chown -R www-data:www-data /var/www/djangoproject
+chmod -R g+rw /var/www/djangoproject
+find /var/www/djangoproject -type d -exec chmod g+s {} \;
+
+echo "🔹 Creazione dell'utente e impostazione della password..."
+useradd -m -s /bin/bash -G sudo,www-data "$ADMIN_USER"
+echo "$ADMIN_USER:$ADMIN_PASS" | chpasswd
+
+echo "🔹 Creazione delle cartelle di progetto..."
+mkdir -p "$WWW_DIR/static" "$WWW_DIR/media"
+chown -R www-data:www-data "$WWW_DIR"
+chmod -R g+rw "$WWW_DIR"
+find "$WWW_DIR" -type d -exec chmod g+s {} \;
+
+# ========================
+# 🔹 Clonazione della repository Django
+# ========================
+echo "🔹 Clonazione della repository..."
+git clone https://github.com/marcomenon/djangoproject.git /home/django/djangoproject
+
+echo "🔹 Clonazione della repository..."
+git clone $GIT_REPO $PROJ_HOME
+
+# ========================
+# 🔹 Modifica del file pyproject.toml
+# ========================
+echo "🔹 Aggiornamento del nome del progetto in pyproject.toml..."
+sed -i -E 's/^name\s*=\s*".*"/name = "'djangoproject'"/' /home/django/djangoproject/pyproject.toml
+chown -R django:www-data /home/django/djangoproject
+
+echo "🔹 Aggiornamento del nome del progetto in pyproject.toml..."
+sed -i -E 's/^name\s*=\s*".*"/name = "'"$PROJ_NAME"'"/' "$PROJ_HOME/pyproject.toml"
+chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
+
+# ========================
+# 🔹 Creazione del Virtual Environment e Installazione Gunicorn + uv
+# ========================
+sudo -u django bash -c "cd /home/django/djangoproject && python3 -m venv .venv"
+sudo -u django bash -c "cd /home/django/djangoproject && source /home/django/djangoproject/.venv/bin/activate && pip install --upgrade pip uv"
+sudo -u django bash -c "cd /home/django/djangoproject && /home/django/djangoproject/.venv/bin/uv sync"
+
+echo "🔹 Creazione del virtual environment e installazione Gunicorn + uv..."
+sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && python3 -m venv .venv"
+sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && source $PROJ_HOME/.venv/bin/activate && pip install --upgrade pip uv"
+sudo -u "$ADMIN_USER" bash -c "cd $PROJ_HOME && $PROJ_HOME/.venv/bin/uv sync"
+
+# ========================
+# 🔹 Creazione del file .env con variabili d'ambiente
+# ========================
+echo "🔹 Creazione del file .env..."
+cat > /home/django/djangoproject/.env <<EOF
+# Configurazione ambiente per django
+DJANGO_SECRET_KEY="$(openssl rand -hex 32)"
+DEBUG="True"
+MAINTENANCE_MODE="True"
+ALLOWED_MAINTENANCE_HOSTS="localhost"
+ALLOWED_MAINTENANCE_IPS="$(hostname -I | awk '{print $1}')"
+ALLOWED_HOSTS_DOMAIN="*.django.menonsistemi.com"
+ALLOWED_HOSTS_IP="127.0.0.1"
+
+# Email
+EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST="smtp.gmail.com"
+EMAIL_PORT="587"
+EMAIL_HOST_USER="your_email@gmail.com"
+EMAIL_HOST_PASSWORD="your_email_password"
+EMAIL_USE_TLS="true"
+EMAIL_TIMEOUT="10"
+DEFAULT_FROM_EMAIL="your_email@gmail.com"
+
+# Database
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME=postgres_djangoproject
+DB_USER=user_djangoproject
+DB_PASS=password_djangoproject
+DB_HOST=localhost
+DB_PORT=5432
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Internazionalizzazione
+LANGUAGE_CODE=it-IT
+TIME_ZONE=Europe/Rome
+
+# Static e Media
+STATIC_ROOT=/var/www/djangoproject/static
+MEDIA_ROOT=/var/www/djangoproject/media
+
+# Allauth
+ACCOUNT_EMAIL_VERIFICATION="none"
+ACCOUNT_LOGIN_METHODS="username"
+ACCOUNT_EMAIL_REQUIRED="false"
+ACCOUNT_USERNAME_REQUIRED="true"
+EOF
+
+chown django:django /home/django/djangoproject/.env
+chmod 600 /home/django/djangoproject/.env
+
+echo "🔹 Creazione del file .env..."
+cat > "$PROJ_HOME/.env" <<EOF
+# Configurazione ambiente per $PROJ_NAME
+DJANGO_SECRET_KEY="$(openssl rand -hex 32)"
+DEBUG="True"
+MAINTENANCE_MODE="True"
+ALLOWED_MAINTENANCE_HOSTS="localhost"
+ALLOWED_MAINTENANCE_IPS="$(hostname -I | awk '{print $1}')"
+ALLOWED_HOSTS_DOMAIN="*.$PROJ_NAME.$PROJ_DOMAIN"
+ALLOWED_HOSTS_IP="127.0.0.1"
+
+# Email
+EMAIL_BACKEND="django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST="smtp.gmail.com"
+EMAIL_PORT="587"
+EMAIL_HOST_USER="your_email@gmail.com"
+EMAIL_HOST_PASSWORD="your_email_password"
+EMAIL_USE_TLS="true"
+EMAIL_TIMEOUT="10"
+DEFAULT_FROM_EMAIL="your_email@gmail.com"
+
+# Database
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASS=$DB_PASS
+DB_HOST=$DB_HOST
+DB_PORT=$DB_PORT
+
+# Redis
+REDIS_HOST=$REDIS_HOST
+REDIS_PORT=$REDIS_PORT
+
+# Internazionalizzazione
+LANGUAGE_CODE="it-IT"
+TIME_ZONE="Europe/Rome"
+
+# Static e Media
+STATIC_ROOT=$STATIC_ROOT
+MEDIA_ROOT=$MEDIA_ROOT
+
+# Allauth
+ACCOUNT_EMAIL_VERIFICATION="none"
+ACCOUNT_LOGIN_METHODS="username"
+ACCOUNT_EMAIL_REQUIRED="false"
+ACCOUNT_USERNAME_REQUIRED="true"
+EOF
+
+chown "$ADMIN_USER:$ADMIN_USER" "$PROJ_HOME/.env"
+chmod 600 "$PROJ_HOME/.env"
+
+# ========================
+# 🔹 Configurazione Nginx (senza env_file e rimozione default)
+# ========================
+echo "🔹 Creazione configurazione Nginx..."
+cat > /etc/nginx/conf.d/djangoproject.conf <<EOF
+server {
+    listen 80;
+    server_name _;
+
+    location /static/ {
+        alias /var/www/djangoproject/static/;
+    }
+
+    location /media/ {
+        alias /var/www/djangoproject/media/;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+rm -f /etc/nginx/conf.d/default.conf
+nginx -t && systemctl restart nginx
+
+echo "🔹 Creazione configurazione Nginx..."
+cat > "$NGINX_CONF" <<EOF
+server {
+    listen 80;
+    server_name _;
+
+    location /static/ {
+        alias $WWW_DIR/static/;
+    }
+
+    location /media/ {
+        alias $WWW_DIR/media/;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+rm -f /etc/nginx/conf.d/default.conf
+nginx -t && systemctl restart nginx
+
+# ========================
+# 🔹 Configurazione UFW (Firewall)
+# ========================
+echo "🔹 Configurazione di UFW..."
+ufw allow OpenSSH
+ufw allow 80
+ufw allow 5432
+ufw allow 6379
+ufw --force enable
+
+echo "🔹 Configurazione di UFW..."
+ufw allow OpenSSH
+for port in "${UFW_PORTS[@]}"; do
+    ufw allow "$port"
+done
+ufw --force enable
+
+# ========================
+# 🔹 Creazione del servizio systemd per Gunicorn
+# ========================
+echo "🔹 Creazione del servizio per Gunicorn..."
+cat > "/etc/systemd/system/gunicorn_djangoproject.service" <<EOF
+[Unit]
+Description=Gunicorn instance per djangoproject
+After=network.target
+
+[Service]
+User=$ADMIN_USER
+Group=www-data
+WorkingDirectory=/home/django/djangoproject
+EnvironmentFile=/home/django/djangoproject/.env
+ExecStart=/home/django/djangoproject/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 core.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable gunicorn_djangoproject
+systemctl start gunicorn_djangoproject
+
+echo "🔹 Creazione del servizio per Gunicorn..."
+cat > "/etc/systemd/system/gunicorn_$PROJ_NAME.service" <<EOF
+[Unit]
+Description=Gunicorn instance per $PROJ_NAME
+After=network.target
+
+[Service]
+User=$ADMIN_USER
+Group=www-data
+WorkingDirectory=$PROJ_HOME
+EnvironmentFile=$PROJ_HOME/.env
+ExecStart=$PROJ_HOME/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 core.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable gunicorn_$PROJ_NAME
+systemctl start gunicorn_$PROJ_NAME
