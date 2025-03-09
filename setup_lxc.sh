@@ -84,22 +84,36 @@ find "$WWW_DIR" -type d -exec chmod g+s {} \;
 # 🔹 Configurazione Database PostgreSQL
 # ========================
 echo "🔹 Configurazione di PostgreSQL..."
-sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;"
-sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
+set -e  # Se un comando fallisce, lo script si interrompe
+
+# Creazione database e utente
+sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" || echo "⚠️ Il database $DB_NAME esiste già!"
+sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" || echo "⚠️ L'utente $DB_USER esiste già!"
 sudo -u postgres psql -c "ALTER DATABASE $DB_NAME OWNER TO $DB_USER;"
+
+# Configurazione del ruolo
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET client_encoding TO 'utf8';"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET default_transaction_isolation TO 'read committed';"
 sudo -u postgres psql -c "ALTER ROLE $DB_USER SET timezone TO 'Europe/Rome';"
+
+# Permessi database
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
 sudo -u postgres psql -c "ALTER USER $DB_USER WITH CREATEDB;"
+
+# Permessi sullo schema public
 sudo -u postgres psql -c "GRANT USAGE, CREATE ON SCHEMA public TO $DB_USER;"
 sudo -u postgres psql -c "GRANT ALL ON SCHEMA public TO $DB_USER;"
-sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;"
-sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;"
-sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DB_USER;"
 sudo -u postgres psql -c "ALTER SCHEMA public OWNER TO $DB_USER;"
-sudo -u postgres psql -c "CREATE ROLE $DB_APPR;"
+
+# Permessi di default per il futuro (bisogna specificare il ruolo)
+sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES FOR ROLE $DB_USER IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;"
+sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES FOR ROLE $DB_USER IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;"
+sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES FOR ROLE $DB_USER IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DB_USER;"
+
+# Creazione di un ruolo applicativo (se necessario)
+sudo -u postgres psql -c "CREATE ROLE $DB_APPR;" || echo "⚠️ Il ruolo $DB_APPR esiste già!"
 sudo -u postgres psql -c "GRANT $DB_APPR TO $DB_USER;"
+
 systemctl restart postgresql
 
 # ========================
@@ -124,7 +138,7 @@ fi
 # 🔹 Modifica del file pyproject.toml
 # ========================
 echo "🔹 Aggiornamento del nome del progetto in pyproject.toml..."
-sed -i "s/^name = \".*\"/name = \"$PROJ_NAME\"/" "$PROJ_HOME/pyproject.toml"
+sed -i -E 's/^name\s*=\s*".*"/name = "'"$PROJ_NAME"'"/' "$PROJ_HOME/pyproject.toml"
 chown -R "$ADMIN_USER:www-data" "$PROJ_HOME"
 
 # ========================
