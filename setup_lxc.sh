@@ -65,7 +65,7 @@ echo "==============================="
 # 🔹 Installazione di Pacchetti Necessari
 # ========================
 echo "🔹 Installazione di pacchetti..."
-apt update && apt install -y docker.io docker-compose nginx python3-pip python3-venv git
+apt update && apt install -y docker.io docker-compose nginx python3-pip python3-venv git libpq-dev python3-dev gcc
 
 # ========================
 # 🔹 Creazione Utente e Cartelle
