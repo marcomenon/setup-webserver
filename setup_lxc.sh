@@ -17,7 +17,7 @@ PROJ_HOME="/home/$PROJ_NAME"
 DB_NAME="postgres_$PROJ_NAME"
 DB_USER="user_$PROJ_NAME"
 DB_PASS="password_$PROJ_NAME"
-DB_APPR="approle_$PROJ_NAME"
+DB_PORT="5432"
 REDIS_PORT="6379"
 UFW_PORTS=(80 5432 6379)  # 5432 per PostgreSQL, 6379 per Redis, 80 per HTTP
 
@@ -65,7 +65,7 @@ echo "==============================="
 # 🔹 Installazione di Pacchetti Necessari
 # ========================
 echo "🔹 Installazione di pacchetti..."
-apt update && apt install -y build-essential pkg-config nginx postgresql postgresql-contrib redis python3-pip python3-venv python3-dev libpq-dev python3-dev gcc git
+apt update && apt install -y docker.io docker-compose nginx python3-pip python3-venv git
 
 # ========================
 # 🔹 Creazione Utente e Cartelle
@@ -79,49 +79,6 @@ mkdir -p "$WWW_DIR/static" "$WWW_DIR/media"
 chown -R www-data:www-data "$WWW_DIR"
 chmod -R g+rw "$WWW_DIR"
 find "$WWW_DIR" -type d -exec chmod g+s {} \;
-
-# ========================
-# 🔹 Configurazione Database PostgreSQL
-# ========================
-echo "🔹 Configurazione di PostgreSQL..."
-set -e  # Se un comando fallisce, lo script si interrompe
-
-# Creazione database e utente
-sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" || echo "⚠️ Il database $DB_NAME esiste già!"
-sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" || echo "⚠️ L'utente $DB_USER esiste già!"
-sudo -u postgres psql -c "ALTER DATABASE $DB_NAME OWNER TO $DB_USER;"
-
-# Configurazione del ruolo
-sudo -u postgres psql -c "ALTER ROLE $DB_USER SET client_encoding TO 'utf8';"
-sudo -u postgres psql -c "ALTER ROLE $DB_USER SET default_transaction_isolation TO 'read committed';"
-sudo -u postgres psql -c "ALTER ROLE $DB_USER SET timezone TO 'Europe/Rome';"
-
-# Permessi database
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;"
-sudo -u postgres psql -c "ALTER USER $DB_USER WITH CREATEDB;"
-
-# Permessi sullo schema public
-sudo -u postgres psql -c "GRANT USAGE, CREATE ON SCHEMA public TO $DB_USER;"
-sudo -u postgres psql -c "GRANT ALL ON SCHEMA public TO $DB_USER;"
-sudo -u postgres psql -c "ALTER SCHEMA public OWNER TO $DB_USER;"
-
-# Permessi di default per il futuro (bisogna specificare il ruolo)
-sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES FOR ROLE $DB_USER IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;"
-sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES FOR ROLE $DB_USER IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;"
-sudo -u postgres psql -c "ALTER DEFAULT PRIVILEGES FOR ROLE $DB_USER IN SCHEMA public GRANT ALL ON FUNCTIONS TO $DB_USER;"
-
-# Creazione di un ruolo applicativo (se necessario)
-sudo -u postgres psql -c "CREATE ROLE $DB_APPR;" || echo "⚠️ Il ruolo $DB_APPR esiste già!"
-sudo -u postgres psql -c "GRANT $DB_APPR TO $DB_USER;"
-
-systemctl restart postgresql
-
-# ========================
-# 🔹 Configurazione Redis
-# ========================
-echo "🔹 Configurazione di Redis..."
-sed -i 's/^supervised no/supervised systemd/' /etc/redis/redis.conf
-systemctl restart redis
 
 # ========================
 # 🔹 Clonazione della repository Django
@@ -174,16 +131,15 @@ EMAIL_TIMEOUT=$EMAIL_TIMEOUT
 DEFAULT_FROM_EMAIL=$DEFAULT_FROM_EMAIL
 
 # Database
+DB_ENGINE=django.db.backends.postgresql
 DB_NAME=$DB_NAME
 DB_USER=$DB_USER
 DB_PASS=$DB_PASS
-DB_APPR=$DB_APPR
-DB_ENGINE=django.db.backends.postgresql
-DB_HOST=localhost
-DB_PORT=5432
+DB_HOST=postgres
+DB_PORT=$DB_PORT
 
 # Redis
-REDIS_HOST=localhost
+REDIS_HOST=redis
 REDIS_PORT=$REDIS_PORT
 
 # Internazionalizzazione
@@ -203,6 +159,51 @@ EOF
 
 chown "$ADMIN_USER:$ADMIN_USER" "$PROJ_HOME/.env"
 chmod 600 "$PROJ_HOME/.env"
+
+# ========================
+# 🔹 Creazione e avvio dei container Docker
+# ========================
+echo "🔹 Creazione e avvio di PostgreSQL e Redis nei container..."
+cd "$PROJ_HOME"
+
+# Creiamo il file docker-compose.yml
+cat > "$PROJ_HOME/docker-compose.yml" <<EOF
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ${PROJ_NAME}_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+
+  redis:
+    image: redis:7
+    container_name: ${PROJ_NAME}_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
+networks:
+  backend:
+
+volumes:
+  postgres_data:
+EOF
+
+# Avviamo i container
+docker-compose up -d
 
 # ========================
 # 🔹 Configurazione Nginx (senza env_file e rimozione default)
